@@ -12,7 +12,15 @@ pub struct ModelConstructProcedure {
     pub object_name: Option<String>,
 }
 
-pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
+pub async fn run(
+    tx: &mut Transaction<'_, Postgres>,
+    path: &str,
+    start_row: usize,
+    code_1c_length: &usize,
+) -> Result<()> {
+
+    // println!("code_1c_length: {}", code_1c_length);
+
     let mut workbook: Xlsx<_> = open_workbook(path)
         .with_context(|| format!("Не удалось открыть файл процедур: {}", path))?;
 
@@ -22,14 +30,44 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
 
     let mut count = 0;
 
-    for row in range.rows().skip(1) { // Пропускаем заголовок Excel
+    for row in range.rows().skip(start_row) { // Пропускаем заголовок Excel
         // Маппинг колонок (индексы 0, 1, 2... должны соответствовать порядку в Excel)
         let procedure = ModelConstructProcedure {
-            code_1c: row.get(0).and_then(|c| Some(c.to_string())).unwrap_or_default(),
-            name: row.get(1).and_then(|c| Some(c.to_string())).unwrap_or_else(|| "Без названия".into()),
+
+            // Используем .map вместо .and_then(|c| Some(c...)), так короче
+            code_1c: {
+                let raw = row.get(0).map(|c| c.to_string()).unwrap_or_default();
+                if raw.is_empty() {
+                    raw // возвращает пустую String
+                } else {
+                    format!("{:0>width$}", raw, width = code_1c_length) // возвращает отформатированную String
+                }
+            },
+
+            name: row.get(1)
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "Без названия".to_string()),
+
             text: row.get(2).map(|c| c.to_string()),
-            object_code_1c: row.get(3).map(|c| c.to_string()),
+            // text: Some("".to_string()),
+
+            object_code_1c: {
+                let raw =  row.get(3).map(|c| c.to_string()).unwrap_or_default();
+                if raw.is_empty() {
+                    None // Если пусто, возвращаем Option::None (в БД будет NULL)
+                } else {
+                    // Форматируем и оборачиваем в Some
+                    Some(format!("{:0>width$}", raw, width = code_1c_length))
+                }
+            },
+
             object_name: row.get(4).map(|c| c.to_string()),
+
+            // code_1c: row.get(0).and_then(|c| Some(c.to_string())).unwrap_or_default(),
+            // name: row.get(1).and_then(|c| Some(c.to_string())).unwrap_or_else(|| "Без названия".into()),
+            // text: row.get(2).map(|c| c.to_string()),
+            // object_code_1c: row.get(3).map(|c| c.to_string()),
+            // object_name: row.get(4).map(|c| c.to_string()),
         };
 
         if procedure.code_1c.is_empty() { continue; }
@@ -37,14 +75,17 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
         // Выполняем вставку с обновлением при конфликте (Upsert)
         sqlx::query(
             r#"
-            INSERT INTO model_construct_procedures (code_1c, name, text, object_code_1c, object_name)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (code_1c) DO UPDATE SET
-                name = EXCLUDED.name,
-                text = EXCLUDED.text,
-                object_code_1c = EXCLUDED.object_code_1c,
-                object_name = EXCLUDED.object_name
-            "#
+                INSERT INTO model_construct_procedures (
+                    code_1c, name, text, object_code_1c, object_name, updated_at, created_at
+                )
+                VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+                ON CONFLICT (code_1c) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    text = EXCLUDED.text,
+                    object_code_1c = EXCLUDED.object_code_1c,
+                    object_name = EXCLUDED.object_name,
+                    updated_at = NOW()
+           "#
         )
             .bind(&procedure.code_1c)
             .bind(&procedure.name)
