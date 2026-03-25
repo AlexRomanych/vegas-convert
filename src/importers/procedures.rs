@@ -181,6 +181,17 @@ fn convert_to_vba(excel_text: String) -> String {
         }
     }
 
+    const TAB_CHARS: &str = "    ";
+    let mut tab_str = String::new();
+    let mut indent_count = 0;
+
+    let mut result: Vec<String> = Vec::new();
+    for line in vba_vector {
+        if line.contains("Else") {
+
+        }
+    }
+
     vba_vector.join("\n")
 }
 
@@ -210,7 +221,9 @@ fn push_vba_line(
     vba_line_str = vba_line_str.replace(" или ", " Or ");
     vba_line_str = vba_line_str.replace(" и ", " And ");
     vba_line_str = vba_line_str.replace("Окр", "Round");
+    vba_line_str = vba_line_str.replace("ОКР", "Round");
     vba_line_str = vba_line_str.replace("Цел", "Fix");
+    vba_line_str = vba_line_str.replace("ЦЕЛ", "Fix");
 
     // __ отделяем пробелами ключевые слова
     vba_line_str = vba_line_str.replace("=", " = ");
@@ -223,13 +236,40 @@ fn push_vba_line(
     // vba_line_str = vba_line_str.replace("'", " ' ");
     vba_line_str = vba_line_str.replace("(", " ( ");
     vba_line_str = vba_line_str.replace(")", " ) ");
+    vba_line_str = vba_line_str.replace(",", ", ");
+
+    // __ Переводим в транслитерацию + выделяем все переменные
+    vba_line_str = translate_line(vba_line_str, vba_procedure_vars);
+
+    // __ возвращаем нормальное отображение скобок после отделения от переменных
+    while vba_line_str.contains("( ") {
+        vba_line_str = vba_line_str.replace("( ", "(");
+    }
+    while vba_line_str.contains(" )") {
+        vba_line_str = vba_line_str.replace(" )", ")");
+    }
+
+    // __ возвращаем нормальное отображение больше-меньше-равно
+    while vba_line_str.contains("> =") {
+        println!("find: {}", vba_line_str);
+        vba_line_str = vba_line_str.replace("> =", ">=");
+    }
+    while vba_line_str.contains("< =") {
+        vba_line_str = vba_line_str.replace("< =", "<=");
+    }
+
+    while vba_line_str.contains(" , ") {
+        vba_line_str = vba_line_str.replace(" , ", ", ");
+    }
+
+    vba_line_str = vba_line_str.replace(" < = ", " <= ");
+    vba_line_str = vba_line_str.replace("Round (", "Round(");
+    vba_line_str = vba_line_str.replace("Fix (", "Fix(");
 
     // __ Удаляем "  "
     while vba_line_str.contains("  ") {
         vba_line_str = vba_line_str.replace("  ", " ");
     }
-
-    vba_line_str = translate_line(vba_line_str, vba_procedure_vars);
 
     vba_lines_vector.push(vba_line_str);
 }
@@ -241,54 +281,62 @@ fn translate_line(russian_line: String, vars: &mut HashMap<String, String>) -> S
     let words: Vec<&str> = russian_line.split_whitespace().collect();
 
     for word in words {
+
+        // __ Если встречаем комментарий - выходим до конца строки
+        if word.contains("'") {
+            break;
+        }
+
+        // __ Если это не ключевое слово
         if dictionary.get(word).is_none() {
             // __ Сразу создаем String нужной емкости (примерно в 1.5 раза больше исходного слова)
             let mut translit_result = String::with_capacity(word.len() * 2);
 
             for c in word.chars() {
+                #[rustfmt::skip]
                 let trans_c = match c {
-                    ' ' => "_",
-                    'а' => "a",
-                    'б' => "b",
-                    'в' => "v",
-                    'г' => "g",
-                    'д' => "d",
-                    'е' => "e",
-                    'ё' => "e",
-                    'ж' => "zh",
-                    'з' => "z",
-                    'и' => "i",
-                    'й' => "j",
-                    'к' => "k",
-                    'л' => "l",
-                    'м' => "m",
-                    'н' => "n",
-                    'о' => "o",
-                    'п' => "p",
-                    'р' => "r",
-                    'с' => "s",
-                    'т' => "t",
-                    'у' => "u",
-                    'ф' => "f",
-                    'х' => "h",
-                    'ц' => "c",
-                    'ч' => "ch",
-                    'ш' => "sh",
-                    'щ' => "shch",
-                    'ъ' | 'ь' => "",
-                    'ы' => "y",
-                    'э' => "e",
-                    'ю' => "yu",
-                    'я' => "ya",
+                    ' ' | '(' | ')' | '-' | '+' => "_",
+                    'а' => "a", 'А' => "A",
+                    'б' => "b", 'Б' => "B",
+                    'в' => "v", 'В' => "V",
+                    'г' => "g", 'Г' => "G",
+                    'д' => "d", 'Д' => "D",
+                    'е' => "e", 'Е' => "E",
+                    'ё' => "e", 'Ё' => "E",
+                    'ж' => "zh", 'Ж' => "Zh",
+                    'з' => "z", 'З' => "Z",
+                    'и' => "i", 'И' => "I",
+                    'й' => "j", 'Й' => "J",
+                    'к' => "k", 'К' => "K",
+                    'л' => "l", 'Л' => "L",
+                    'м' => "m", 'М' => "M",
+                    'н' => "n", 'Н' => "N",
+                    'о' => "o", 'О' => "O",
+                    'п' => "p", 'П' => "P",
+                    'р' => "r", 'Р' => "R",
+                    'с' => "s", 'С' => "S",
+                    'т' => "t", 'Т' => "T",
+                    'у' => "u", 'У' => "U",
+                    'ф' => "f", 'Ф' => "F",
+                    'х' => "h", 'Х' => "H",
+                    'ц' => "c", 'Ц' => "C",
+                    'ч' => "ch", 'Ч' => "Ch",
+                    'ш' => "sh", 'Ш' => "Sh",
+                    'щ' => "shch", 'Щ' => "Shch",
+                    'ъ' | 'ь'| 'Ъ' | 'Ь' => "",
+                    'ы' => "y", 'Ы' => "Y",
+                    'э' => "e", 'Э' => "E",
+                    'ю' => "yu", 'Ю' => "Yu",
+                    'я' => "ya", 'Я' => "Ya",
                     _ => {
                         // Для спецсимволов используем временный буфер,
                         // так как нам нужно превратить char в строку
-                        translit_result.push(c);
+                        translit_result.push(c); // __ Записываем символ
                         continue; // Переходим к следующему символу
                     }
                 };
 
-                translit_result.push_str(trans_c);
+                translit_result.push_str(trans_c); // __ Записываем строку
             }
 
             // __ Записываем переменную в мапу переменных
@@ -298,12 +346,13 @@ fn translate_line(russian_line: String, vars: &mut HashMap<String, String>) -> S
         }
     }
 
+    // __ Заменяем русские переменные на транслитерит
     let mut result = russian_line;
     for (rus_name, vba_name) in vars.iter() {
         result = result.replace(rus_name, vba_name);
         // println!("Заменяем '{}' на '{}'", rus_name, vba_name);
     }
-    
+
     result
 }
 
