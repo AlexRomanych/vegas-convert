@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
-    <data-source source="LOCAL" name="rust_db@localhost" uuid="8040902a-268e-4a93-ba5d-a18c932322a0">
+    <data-source source="LOCAL" name="rust_db@localhost [2]" uuid="9ff28ed7-86e0-474f-9389-490e74746000">
       <driver-ref>postgresql</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.postgresql.Driver</jdbc-driver>

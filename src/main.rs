@@ -28,11 +28,11 @@ async fn main() -> Result<()> {
     // __ Создаем транзакцию (если один файл упадет, база не засорится)
     let mut tx = pool.begin().await?;
 
-    println!("🚀 Начинаем импорт файлов из 1С/...");
+
 
 
     const CODE_1C_LENGTH: usize = 9;                        // __ Количество символов в коде в 1С
-    const IMPORT_PATH: &str = "storage/app/1c_imports";     // __ Путь к отчетам
+    const IMPORT_PATH: &str = "storage/app/1c_imports/";     // __ Путь к отчетам
 
     // __ Сами отчеты
     const PROCEDURES_FILE_NAME: &str = "procedures.xlsx";           // __ Процедуры
@@ -53,7 +53,8 @@ async fn main() -> Result<()> {
 
     // __ Вызов импортера процедур.
     // __ Передаем транзакцию по ссылке (&mut tx)
-
+    println!("🚀 Начинаем импорт файлов из 1С/...");
+    
     importers::procedures::run(&mut tx, &path_str, 4, &CODE_1C_LENGTH)
         .await
         .context("Ошибка при импорте процедур")?;

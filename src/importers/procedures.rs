@@ -72,6 +72,10 @@ pub async fn run(
         // Маппинг колонок (индексы 0, 1, 2... должны соответствовать порядку в Excel)
 
         let raw_text = row.get(2);
+        let procedure_name = row
+            .get(1)
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "Без названия".to_string());
 
         let procedure = ModelConstructProcedure {
             // Используем .map вместо .and_then(|c| Some(c...)), так короче
@@ -84,13 +88,11 @@ pub async fn run(
                 }
             },
 
-            name: row
-                .get(1)
-                .map(|c| c.to_string())
-                .unwrap_or_else(|| "Без названия".to_string()),
-
             text: raw_text.map(|c| c.to_string()),
-            text_vba: raw_text.map(|c| convert_to_vba(c.to_string())),
+            text_vba: raw_text.map(|c| convert_to_vba(c.to_string(), &procedure_name)),
+
+            name: procedure_name,
+
             // text_vba: Some("123".to_string()),
             object_code_1c: {
                 let raw = row.get(3).map(|c| c.to_string()).unwrap_or_default();
@@ -154,7 +156,7 @@ pub async fn run(
     Ok(())
 }
 
-fn convert_to_vba(excel_text: String) -> String {
+fn convert_to_vba(excel_text: String, procedure_name: &String) -> String {
     let lines: Vec<&str> = excel_text
         .lines() // Создает итератор по строкам
         .map(|s| s.trim()) // Убирает лишние пробелы по краям каждой строки
@@ -163,6 +165,27 @@ fn convert_to_vba(excel_text: String) -> String {
 
     let mut vba_vector: Vec<String> = Vec::new(); // __ Вектор строк процедуры
     let mut vba_variables: HashMap<String, String> = HashMap::new(); // __ HashMap переменных процедуры
+
+    // __ Определяем название процедуры
+    let mut proc_name = procedure_name.clone();
+    push_vba_line(proc_name.as_str(), &mut vba_vector, &mut vba_variables);
+    proc_name = vba_vector.pop().unwrap_or("no_name".to_string());
+
+    proc_name = proc_name
+        .replace("  ", " ")
+        .replace(" ", "_")
+        .replace("*", "_")
+        .replace("?", "_")
+        .replace("/", "_")
+        .replace("\\", "_")
+        .replace(",", "_")
+        .replace("(", "_")
+        .replace(")", "_")
+        .replace("+", "_")
+        .replace("-", "_");
+
+    // __ Очищаем массив переменных после формирования названия процедуры
+    vba_variables.clear();
 
     for (index, line) in lines.iter().enumerate() {
         if line.is_empty() {
@@ -181,20 +204,115 @@ fn convert_to_vba(excel_text: String) -> String {
         }
     }
 
-    const TAB_CHARS: &str = "    ";
-    let mut tab_str = String::new();
-    let mut indent_count = 0;
+    // __ Собираем в конечную кучу
+    let mut result_vector: Vec<String> = Vec::new();
 
-    let mut result: Vec<String> = Vec::new();
-    for line in vba_vector {
-        if line.contains("Else") {
+    const FUNCTION_PREFIX: &str = "f_";
 
+    // __ Формируем строку присвоения результата
+    let mut assign_str = String::from("    ".to_owned() + FUNCTION_PREFIX);
+    assign_str.push_str(proc_name.as_str());
+    assign_str.push_str(" = result");
+
+    // __ Формируем и отправляем заголовок функции
+    let mut res_func_name = String::from("Function ".to_owned() + FUNCTION_PREFIX);
+    res_func_name.push_str(proc_name.as_str());
+    res_func_name.push_str("() as double");
+    result_vector.push(res_func_name);
+
+    const VARS_PER_STRING: u8 = 5; // __ Количество переменных в строке
+    const INIT_STR: &str = "    Dim ";
+
+    let mut vars_count: u8 = 0;
+    let mut var = INIT_STR.to_string();
+
+    for (_, lat_var) in vba_variables.iter() {
+        if !lat_var.contains('.') && !lat_var.contains('[') && !lat_var.contains(']') {
+            var.push_str(lat_var);
+            var.push_str(" as double, ");
+
+            vars_count += 1;
+
+            if vars_count >= VARS_PER_STRING {
+                var.pop();
+                var.pop();
+                result_vector.push(var.clone());
+                var = INIT_STR.to_string();
+                vars_count = 0;
+            }
         }
     }
 
-    vba_vector.join("\n")
+    if var.len() != INIT_STR.len() {
+        var.pop();
+        var.pop();
+        result_vector.push(var.clone());
+    }
+
+    result_vector.push("    Dim result as double".to_string());
+    result_vector.push("".to_string());
+
+    let mut indent_level: i8 = 0;
+    let mut keep_indent = false;
+    let mut result_line = String::new();
+
+    for line in vba_vector {
+        // let normalized = &line;
+        let normalized = line.to_lowercase();
+        keep_indent = false;
+
+        // __ Порядок важен
+        // __ 1. Сначала проверяем закрытие (End If)
+        if normalized.contains("end if") {
+            indent_level -= 1;
+            keep_indent = false;
+        }
+        // __ 2. Затем проверяем Else / ElseIf (они не меняют уровень, но сбрасывают keep_indent)
+        else if normalized.contains("else") {
+            keep_indent = true;
+        }
+        // __ 3. И только потом открытие нового блока
+        else if normalized.starts_with("if ") && normalized.contains(" then") {
+            indent_level += 1;
+            keep_indent = true;
+        }
+
+        if keep_indent {
+            result_line = get_indent_string_by_level(&(indent_level - 1)).to_string();
+        } else {
+            result_line = get_indent_string_by_level(&indent_level).to_string();
+        }
+
+        result_line.push_str(&line);
+        result_vector.push(result_line);
+    }
+
+    // __ Отправляем строку присвоения результата
+    result_vector.push("".to_string());
+    result_vector.push(assign_str);
+
+    result_vector.push("End function".to_string());
+
+    result_vector.join("\n")
+    // vba_vector.join("\n")
 }
 
+fn get_indent_string_by_level(indent_level: &i8) -> &str {
+    if *indent_level == 1 {
+        return "        ";
+    } else if *indent_level == 2 {
+        return "            ";
+    } else if *indent_level == 3 {
+        return "                ";
+    } else if *indent_level == 4 {
+        return "                    ";
+    }
+
+    "    "
+}
+
+/// __ Отправляем в вектор строк строку, попутно конвертируя ее в
+/// __ транслитерацию и выделяем и собираем все переменные
 fn push_vba_line(
     vba_line: &str,
     vba_lines_vector: &mut Vec<String>,
@@ -205,8 +323,12 @@ fn push_vba_line(
     vba_line_str = vba_line_str.replace("//", "' "); // __ переделываем комментарии
     vba_line_str = vba_line_str.replace(";", ""); // __ убираем ";"
 
-    // ' избавляемся от табуляции
-    //     .procedureParsedText = Replace(.procedureParsedText, Chr(TAB_CHAR), "")
+    // __ избавляемся от табуляции
+    vba_line_str = vba_line_str.replace("/t", "");
+    vba_line_str = vba_line_str.replace('\u{9}', "");
+
+    // __ убираем неразрывные пробелы (код 160 - A0)
+    vba_line_str = vba_line_str.replace('\u{A0}', " ");
 
     // __ переделываем условные операторы, порядок имеет значение
     vba_line_str = vba_line_str.replace("ИначеЕсли", "ElseIf");
@@ -241,6 +363,11 @@ fn push_vba_line(
     // __ Переводим в транслитерацию + выделяем все переменные
     vba_line_str = translate_line(vba_line_str, vba_procedure_vars);
 
+    // __ Удаляем "  "
+    while vba_line_str.contains("  ") {
+        vba_line_str = vba_line_str.replace("  ", " ");
+    }
+
     // __ возвращаем нормальное отображение скобок после отделения от переменных
     while vba_line_str.contains("( ") {
         vba_line_str = vba_line_str.replace("( ", "(");
@@ -251,7 +378,6 @@ fn push_vba_line(
 
     // __ возвращаем нормальное отображение больше-меньше-равно
     while vba_line_str.contains("> =") {
-        println!("find: {}", vba_line_str);
         vba_line_str = vba_line_str.replace("> =", ">=");
     }
     while vba_line_str.contains("< =") {
@@ -262,14 +388,8 @@ fn push_vba_line(
         vba_line_str = vba_line_str.replace(" , ", ", ");
     }
 
-    vba_line_str = vba_line_str.replace(" < = ", " <= ");
     vba_line_str = vba_line_str.replace("Round (", "Round(");
     vba_line_str = vba_line_str.replace("Fix (", "Fix(");
-
-    // __ Удаляем "  "
-    while vba_line_str.contains("  ") {
-        vba_line_str = vba_line_str.replace("  ", " ");
-    }
 
     vba_lines_vector.push(vba_line_str);
 }
@@ -278,13 +398,24 @@ fn translate_line(russian_line: String, vars: &mut HashMap<String, String>) -> S
     let dictionary = get_keys_matrix();
 
     // __ Используем collect, чтобы не было проблем с временем жизни ссылки на russian_line
-    let words: Vec<&str> = russian_line.split_whitespace().collect();
+    let mut russian_line_mod = russian_line.clone();
+
+    // __ Убираем двойные пробелы, потому что могут попадать одиночно стоящие цифры, когда разбиваем по пробелу
+    while russian_line_mod.contains("  ") {
+        russian_line_mod = russian_line_mod.replace("  ", " ");
+    }
+    let words: Vec<&str> = russian_line_mod.split_whitespace().collect();
 
     for word in words {
-
         // __ Если встречаем комментарий - выходим до конца строки
         if word.contains("'") {
             break;
+        }
+
+        // __ Еще раз проверяем на одиночные цифры
+        let verify = word.trim().parse::<f64>();
+        if verify.is_ok() {
+            continue;
         }
 
         // __ Если это не ключевое слово
@@ -303,7 +434,7 @@ fn translate_line(russian_line: String, vars: &mut HashMap<String, String>) -> S
                     'д' => "d", 'Д' => "D",
                     'е' => "e", 'Е' => "E",
                     'ё' => "e", 'Ё' => "E",
-                    'ж' => "zh", 'Ж' => "Zh",
+                    'ж' => "zh", 'Ж' => "ZH",
                     'з' => "z", 'З' => "Z",
                     'и' => "i", 'И' => "I",
                     'й' => "j", 'Й' => "J",
@@ -322,12 +453,12 @@ fn translate_line(russian_line: String, vars: &mut HashMap<String, String>) -> S
                     'ц' => "c", 'Ц' => "C",
                     'ч' => "ch", 'Ч' => "Ch",
                     'ш' => "sh", 'Ш' => "Sh",
-                    'щ' => "shch", 'Щ' => "Shch",
+                    'щ' => "shch", 'Щ' => "SHCH",
                     'ъ' | 'ь'| 'Ъ' | 'Ь' => "",
                     'ы' => "y", 'Ы' => "Y",
                     'э' => "e", 'Э' => "E",
-                    'ю' => "yu", 'Ю' => "Yu",
-                    'я' => "ya", 'Я' => "Ya",
+                    'ю' => "yu", 'Ю' => "YU",
+                    'я' => "ya", 'Я' => "YA",
                     _ => {
                         // Для спецсимволов используем временный буфер,
                         // так как нам нужно превратить char в строку
@@ -347,10 +478,29 @@ fn translate_line(russian_line: String, vars: &mut HashMap<String, String>) -> S
     }
 
     // __ Заменяем русские переменные на транслитерит
+    // __ Тут сортируем по длине ключа по убыванию. Важно для правильной замены
+
+    // __ 1. Превращаем в вектор кортежей (String, String)
+    let mut sorted_vec: Vec<_> = vars.into_iter().collect();
+
+    // __ 2. Сортируем по ключу (первый элемент кортежа) по убыванию
+    sorted_vec.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+
     let mut result = russian_line;
-    for (rus_name, vba_name) in vars.iter() {
-        result = result.replace(rus_name, vba_name);
-        // println!("Заменяем '{}' на '{}'", rus_name, vba_name);
+    for (rus_name, vba_name) in sorted_vec.iter() {
+        // __ Тут столько танцев с бубнами, чтобы не менять на транслитерит то, что в комментариях совпадает с переменными
+        if !result.contains("'") {
+            result = result.replace(rus_name.as_str(), vba_name.as_str());
+            continue;
+        }
+
+        let mut parts: Vec<String> = result.split('\'').map(|s| s.to_string()).collect();
+
+        if parts.get(0).is_some() {
+            parts[0] = parts[0].replace(rus_name.as_str(), vba_name.as_str());
+        }
+
+        result = parts.join("'");
     }
 
     result
