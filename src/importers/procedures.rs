@@ -5,15 +5,17 @@ use sqlx::{Postgres, Transaction};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
-pub struct ModelConstructProcedure {
-    pub code_1c: String,          // Первичный ключ
-    pub name: String,             // Название процедуры
-    pub text: Option<String>,     // Текст (может быть пустым)
-    pub text_vba: Option<String>, // Адаптированный под VBA (может быть пустым)
-    pub object_code_1c: Option<String>,
-    pub object_name: Option<String>,
-}
+use crate::structures::procedure::{ModelConstructProcedure};
+
+// #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+// pub struct ModelConstructProcedure {
+//     pub code_1c: String,          // Первичный ключ
+//     pub name: String,             // Название процедуры
+//     pub text: Option<String>,     // Текст (может быть пустым)
+//     pub text_vba: Option<String>, // Адаптированный под VBA (может быть пустым)
+//     pub object_code_1c: Option<String>,
+//     pub object_name: Option<String>,
+// }
 
 // __ Создаем "ленивое" хранилище
 static KEYS_MATRIX: OnceLock<HashMap<&str, &str>> = OnceLock::new();
@@ -116,38 +118,66 @@ pub async fn run(
             continue;
         }
 
-        // Выполняем вставку с обновлением при конфликте (Upsert)
-        sqlx::query(
+        // __ Создаем строку запроса динамически
+        let query_str = format!(
             r#"
-                INSERT INTO model_construct_procedures (
-                    code_1c,
-                    name,
-                    text,
-                    text_vba,
-                    object_code_1c,
-                    object_name,
-                    updated_at,
-                    created_at
-
+                INSERT INTO {} (
+                code_1c, name, text, text_vba, object_code_1c, object_name, updated_at, created_at
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
                 ON CONFLICT (code_1c) DO UPDATE SET
-                    name = EXCLUDED.name,
-                    text = EXCLUDED.text,
-                    text_vba = EXCLUDED.text_vba,
-                    object_code_1c = EXCLUDED.object_code_1c,
-                    object_name = EXCLUDED.object_name,
-                    updated_at = NOW()
-           "#,
-        )
-        .bind(&procedure.code_1c)
-        .bind(&procedure.name)
-        .bind(&procedure.text)
-        .bind(&procedure.text_vba)
-        .bind(&procedure.object_code_1c)
-        .bind(&procedure.object_name)
-        .execute(&mut **tx)
-        .await?;
+                name = EXCLUDED.name,
+                text = EXCLUDED.text,
+                text_vba = EXCLUDED.text_vba,
+                object_code_1c = EXCLUDED.object_code_1c,
+                object_name = EXCLUDED.object_name,
+                updated_at = NOW()
+            "#,
+            ModelConstructProcedure::PROCEDURES_TABLE_NAME
+        );
+
+        // __ Выполняем вставку с обновлением при конфликте
+        sqlx::query(&query_str)
+            .bind(&procedure.code_1c)
+            .bind(&procedure.name)
+            .bind(&procedure.text)
+            .bind(&procedure.text_vba)
+            .bind(&procedure.object_code_1c)
+            .bind(&procedure.object_name)
+            .execute(&mut **tx)
+            .await?;
+
+        // sqlx::query(
+        //     r#"
+        //         INSERT INTO model_construct_procedures (
+        //             code_1c,
+        //             name,
+        //             text,
+        //             text_vba,
+        //             object_code_1c,
+        //             object_name,
+        //             updated_at,
+        //             created_at
+        //
+        //         )
+        //         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+        //         ON CONFLICT (code_1c) DO UPDATE SET
+        //             name = EXCLUDED.name,
+        //             text = EXCLUDED.text,
+        //             text_vba = EXCLUDED.text_vba,
+        //             object_code_1c = EXCLUDED.object_code_1c,
+        //             object_name = EXCLUDED.object_name,
+        //             updated_at = NOW()
+        //    "#,
+        // )
+        // .bind(&procedure.code_1c)
+        // .bind(&procedure.name)
+        // .bind(&procedure.text)
+        // .bind(&procedure.text_vba)
+        // .bind(&procedure.object_code_1c)
+        // .bind(&procedure.object_name)
+        // .execute(&mut **tx)
+        // .await?;
 
         count += 1;
     }
