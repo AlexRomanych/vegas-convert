@@ -1,21 +1,11 @@
+use crate::constants::DATA_SHEET_1C_NAME;
+use crate::helpers::{cell_to_string_by_option, get_formatted_1c_code_string};
+use crate::structures::procedure::ModelConstructProcedure;
 use anyhow::{Context, Result};
-use calamine::{DataType, Reader, Xlsx, open_workbook};
-use serde::{Deserialize, Serialize};
+use calamine::{Reader, Xlsx, open_workbook};
 use sqlx::{Postgres, Transaction};
 use std::collections::HashMap;
 use std::sync::OnceLock;
-
-use crate::structures::procedure::{ModelConstructProcedure};
-
-// #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
-// pub struct ModelConstructProcedure {
-//     pub code_1c: String,          // Первичный ключ
-//     pub name: String,             // Название процедуры
-//     pub text: Option<String>,     // Текст (может быть пустым)
-//     pub text_vba: Option<String>, // Адаптированный под VBA (может быть пустым)
-//     pub object_code_1c: Option<String>,
-//     pub object_name: Option<String>,
-// }
 
 // __ Создаем "ленивое" хранилище
 static KEYS_MATRIX: OnceLock<HashMap<&str, &str>> = OnceLock::new();
@@ -32,6 +22,7 @@ fn get_keys_matrix() -> &'static HashMap<&'static str, &'static str> {
             ("And", "And"),
             ("Round", "Round"),
             ("Fix", "Fix"),
+            ("MsgBox", "MsgBox"),
             ("=", "="),
             (">", ">"),
             ("<", "<"),
@@ -46,14 +37,7 @@ fn get_keys_matrix() -> &'static HashMap<&'static str, &'static str> {
     })
 }
 
-pub async fn run(
-    tx: &mut Transaction<'_, Postgres>,
-    path: &str,
-    start_row: usize,
-    code_1c_length: &usize,
-) -> Result<()> {
-    // println!("code_1c_length: {}", code_1c_length);
-
+pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
     // __ Очищает данные и сбрасывает счетчики ID (SERIAL) в начальное состояние
     sqlx::query("TRUNCATE TABLE models RESTART IDENTITY CASCADE")
         .execute(&mut **tx)
@@ -62,51 +46,61 @@ pub async fn run(
     let mut workbook: Xlsx<_> = open_workbook(path)
         .with_context(|| format!("Не удалось открыть файл процедур: {}", path))?;
 
-    // Предполагаем, что данные на первом листе
+    // __ Получаем лист
     let range = workbook
-        .worksheet_range_at(0)
-        .context("Лист в файле процедур не найден")??;
+        .worksheet_range(DATA_SHEET_1C_NAME)
+        .with_context(|| {
+            // Добавляем контекст к ошибке, если лист не найден или файл поврежден
+            format!(
+                "Не удалось прочитать лист '{}' в файле 1С",
+                DATA_SHEET_1C_NAME
+            )
+        })?;
+
+    // Предполагаем, что данные на первом листе
+    // let range = workbook
+    //     .worksheet_range_at(0)
+    //     .context("Лист в файле процедур не найден")??;
 
     let mut count = 0;
 
-    for row in range.rows().skip(start_row) {
+    for row in range
+        .rows()
+        .skip(ModelConstructProcedure::DATA_START_ROW - 1)
+    {
         // Пропускаем заголовок Excel
         // Маппинг колонок (индексы 0, 1, 2... должны соответствовать порядку в Excel)
+        let mut code_1c = cell_to_string_by_option(row.get(ModelConstructProcedure::CODE_COL - 1));
+        code_1c = get_formatted_1c_code_string(code_1c); // __ Приводим в нормальный вид
 
-        let raw_text = row.get(2);
         let procedure_name = row
-            .get(1)
+            .get(ModelConstructProcedure::NAME_COL - 1)
             .map(|c| c.to_string())
             .unwrap_or_else(|| "Без названия".to_string());
 
-        let procedure = ModelConstructProcedure {
-            // Используем .map вместо .and_then(|c| Some(c...)), так короче
-            code_1c: {
-                let raw = row.get(0).map(|c| c.to_string()).unwrap_or_default();
-                if raw.is_empty() {
-                    raw // возвращает пустую String
-                } else {
-                    format!("{:0>width$}", raw, width = code_1c_length) // возвращает отформатированную String
-                }
-            },
+        let raw_text = row.get(ModelConstructProcedure::TEXT_COL - 1);
 
+        let mut object_code_1c =
+            cell_to_string_by_option(row.get(ModelConstructProcedure::OBJECT_CODE_COL - 1));
+        object_code_1c = get_formatted_1c_code_string(object_code_1c); // __ Приводим в нормальный вид
+
+        let procedure = ModelConstructProcedure {
+            code_1c: code_1c.clone(),
+            // Используем .map вместо .and_then(|c| Some(c...)), так короче
             text: raw_text.map(|c| c.to_string()),
-            text_vba: raw_text.map(|c| convert_to_vba(c.to_string(), &procedure_name)),
+            text_vba: raw_text.map(|c| convert_to_vba(c.to_string(), code_1c, &procedure_name)),
 
             name: procedure_name,
 
-            // text_vba: Some("123".to_string()),
-            object_code_1c: {
-                let raw = row.get(3).map(|c| c.to_string()).unwrap_or_default();
-                if raw.is_empty() {
-                    None // Если пусто, возвращаем Option::None (в БД будет NULL)
-                } else {
-                    // Форматируем и оборачиваем в Some
-                    Some(format!("{:0>width$}", raw, width = code_1c_length))
-                }
+            object_code_1c: if !object_code_1c.is_empty() {
+                Some(object_code_1c)
+            } else {
+                None
             },
 
-            object_name: row.get(4).map(|c| c.to_string()),
+            object_name: row
+                .get(ModelConstructProcedure::OBJECT_NAME_COL - 1)
+                .map(|c| c.to_string()),
             // code_1c: row.get(0).and_then(|c| Some(c.to_string())).unwrap_or_default(),
             // name: row.get(1).and_then(|c| Some(c.to_string())).unwrap_or_else(|| "Без названия".into()),
             // text: row.get(2).map(|c| c.to_string()),
@@ -158,7 +152,6 @@ pub async fn run(
         //             object_name,
         //             updated_at,
         //             created_at
-        //
         //         )
         //         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
         //         ON CONFLICT (code_1c) DO UPDATE SET
@@ -186,11 +179,11 @@ pub async fn run(
     Ok(())
 }
 
-fn convert_to_vba(excel_text: String, procedure_name: &String) -> String {
+fn convert_to_vba(excel_text: String, code_1c: String, procedure_name: &String) -> String {
     let lines: Vec<&str> = excel_text
         .lines() // Создает итератор по строкам
         .map(|s| s.trim()) // Убирает лишние пробелы по краям каждой строки
-        // .filter(|s| !s.is_empty()) // Удаляет пустые строки (если они не нужны)
+        //.filter(|s| !s.is_empty()) // Удаляет пустые строки (если они не нужны)
         .collect(); // Собирает всё в вектор
 
     let mut vba_vector: Vec<String> = Vec::new(); // __ Вектор строк процедуры
@@ -217,6 +210,7 @@ fn convert_to_vba(excel_text: String, procedure_name: &String) -> String {
     // __ Очищаем массив переменных после формирования названия процедуры
     vba_variables.clear();
 
+    // __ Итерируемся по строкам, переводим в VBA, собираем переменные и убираем повторяющиеся пустые строки подряд
     for (index, line) in lines.iter().enumerate() {
         if line.is_empty() {
             let next_line = lines.get(index + 1);
@@ -225,21 +219,26 @@ fn convert_to_vba(excel_text: String, procedure_name: &String) -> String {
                     continue;
                 } else {
                     push_vba_line(line, &mut vba_vector, &mut vba_variables);
-                    // vba_vector.push(line);
                 }
             }
         } else {
             push_vba_line(line, &mut vba_vector, &mut vba_variables);
-            // vba_vector.push(line);
         }
     }
 
     // __ Собираем в конечную кучу
     let mut result_vector: Vec<String> = Vec::new();
 
-    const FUNCTION_PREFIX: &str = "f_";
+    // __ Формируем строку комментария с оригинальными кодом 1С и русским названием процедуры
+    let mut inform_str = String::from("' ");
+    inform_str.push_str(code_1c.as_str());
+    inform_str.push_str("    ");
+    inform_str.push_str(procedure_name.as_str());
+    result_vector.push(inform_str);
 
     // __ Формируем строку присвоения результата
+    const FUNCTION_PREFIX: &str = "f_";
+
     let mut assign_str = String::from("    ".to_owned() + FUNCTION_PREFIX);
     assign_str.push_str(proc_name.as_str());
     assign_str.push_str(" = result");
@@ -250,6 +249,7 @@ fn convert_to_vba(excel_text: String, procedure_name: &String) -> String {
     res_func_name.push_str("() as double");
     result_vector.push(res_func_name);
 
+    // __ Формируем переменные
     const VARS_PER_STRING: u8 = 5; // __ Количество переменных в строке
     const INIT_STR: &str = "    Dim ";
 
@@ -283,8 +283,8 @@ fn convert_to_vba(excel_text: String, procedure_name: &String) -> String {
     result_vector.push("".to_string());
 
     let mut indent_level: i8 = 0;
-    let mut keep_indent = false;
-    let mut result_line = String::new();
+    let mut keep_indent: bool;
+    let mut result_line: String;
 
     for line in vba_vector {
         // let normalized = &line;
@@ -424,11 +424,29 @@ fn push_vba_line(
     vba_lines_vector.push(vba_line_str);
 }
 
-fn translate_line(russian_line: String, vars: &mut HashMap<String, String>) -> String {
+fn translate_line(mut russian_line: String, vars: &mut HashMap<String, String>) -> String {
     let dictionary = get_keys_matrix();
 
     // __ Используем collect, чтобы не было проблем с временем жизни ссылки на russian_line
     let mut russian_line_mod = russian_line.clone();
+
+    // __ Обрабатываем случай:
+    // __ Если не ЗначениеЗаполнено(ВысотаДоклейки) Тогда
+    // __ Предупреждение("Не задана высота Доклейки ППУ");
+    // __ КонецЕсли;
+    if russian_line_mod.contains("ЗначениеЗаполнено") {
+        let mut return_string = String::from("If missingValue Then ' ");
+        return_string.push_str(&russian_line_mod);
+        russian_line = return_string.clone();
+        russian_line_mod = return_string;
+        // return return_string;
+    } else if russian_line_mod.contains("Предупреждение") {
+        let mut return_string = String::from("MsgBox \"Missing Data!!!\" ' ");
+        return_string.push_str(&russian_line_mod);
+        russian_line = return_string.clone();
+        russian_line_mod = return_string;
+        // return return_string;
+    }
 
     // __ Убираем двойные пробелы, потому что могут попадать одиночно стоящие цифры, когда разбиваем по пробелу
     while russian_line_mod.contains("  ") {
@@ -440,6 +458,11 @@ fn translate_line(russian_line: String, vars: &mut HashMap<String, String>) -> S
         // __ Если встречаем комментарий - выходим до конца строки
         if word.contains("'") {
             break;
+        }
+
+        // __ Проверяем на двойные кавычки
+        if word.contains("\"") {
+            continue;
         }
 
         // __ Еще раз проверяем на одиночные цифры

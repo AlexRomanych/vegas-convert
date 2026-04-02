@@ -29,6 +29,24 @@ pub struct ModelConstructProcedure {
 impl ModelConstructProcedure {
     /// **Название таблицы процедур**
     pub const PROCEDURES_TABLE_NAME: &'static str = "model_construct_procedures";
+
+    /// **Номер строки начала данных**
+    pub const DATA_START_ROW: usize = 5;
+
+    /// **Номер столбца с кодом из 1С**
+    pub const CODE_COL: usize = 1;
+
+    /// **Номер столбца с названием из 1С**
+    pub const NAME_COL: usize = 2;
+
+    /// **Номер столбца с текстом процедуры**
+    pub const TEXT_COL: usize = 3;
+
+    /// **Номер столбца с кодом из 1С объекта вида процедуры**
+    pub const OBJECT_CODE_COL: usize = 4;
+
+    /// **Номер столбца с названием объекта вида процедуры (например, "БлокПружинный")**
+    pub const OBJECT_NAME_COL: usize = 5;
 }
 
 

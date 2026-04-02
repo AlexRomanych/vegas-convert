@@ -1,5 +1,8 @@
+#![allow(unused)]
 use crate::constants::CODE_1C_LENGTH;
 use sqlx::{Postgres, Transaction};
+use std::str::FromStr;
+use calamine::Data;
 
 /// **Возвращает приведенную к нормальному виду строку кода 1С**
 pub fn get_formatted_1c_code_string(raw_code: String) -> String {
@@ -30,21 +33,38 @@ pub fn get_formatted_unit_string(raw_code: String) -> String {
 }
 
 /// **Возвращает данные Excel ячейки в строковом формате по Enum Data**
-pub fn cell_to_string_by_enum(data: &calamine::Data) -> String {
+pub fn cell_to_string_by_enum(data: &Data) -> String {
     match data {
-        calamine::Data::String(s) => s.clone(),
-        calamine::Data::Int(i) => i.to_string(),
-        calamine::Data::Float(f) => f.to_string(),
+        Data::String(s) => s.clone(),
+        Data::Int(i) => i.to_string(),
+        Data::Float(f) => f.to_string(),
         _ => String::new(),
     }
 }
 
 /// **Возвращает данные Excel ячейки в строковом формате по Option<Data>**
-pub fn cell_to_string_by_option(data_option: Option<&calamine::Data>) -> String {
+pub fn cell_to_string_by_option(data_option: Option<&Data>) -> String {
     match data_option {
         Some(data) => cell_to_string_by_enum(data),
         None => String::new(),
     }
+}
+
+/// **Возвращает данные Excel ячейки в строковом формате по Option<Data>**
+pub fn cell_to_generic<T>(data_option: Option<&Data>) -> Option<T>
+where
+    T: FromStr
+{
+    let s = match data_option {
+        Some(Data::String(s)) => s.to_string(),
+        Some(Data::Int(i)) => i.to_string(),
+        Some(Data::Float(f)) => f.to_string(),
+        Some(Data::Bool(b)) => b.to_string(),
+        _ => return None,
+    };
+
+    // Пытаемся распарсить строку в целевой тип T
+    s.parse::<T>().ok()
 }
 
 /// **Очищает таблицу**

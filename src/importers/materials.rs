@@ -1,4 +1,4 @@
-#[allow(unused)]
+#![allow(unused)]
 use crate::constants::DATA_SHEET_1C_NAME;
 use crate::helpers::{
     cell_to_string_by_option,
@@ -38,9 +38,7 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
     let mut count = 0;
 
     let mut properties: HashMap<String, Value> = HashMap::new();
-
     let mut item: Material = Material::default();
-
     let mut group_code = String::new();
     let mut category_code = String::new();
 
@@ -51,8 +49,6 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
                 // __ Парсим свойства
                 set_properties(&mut item, &mut properties);
                 store_item(&mut item, tx, &mut count).await?; // __ Записываем в базу
-                // item.clear();
-                // properties.clear();
             }
 
             let mut item_code = cell_to_string_by_option(row.get(Material::GROUP_CODE_COL - 1));
@@ -67,7 +63,6 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
             item = Material::new(item_code.clone(), item_name);
 
             store_item(&mut item, tx, &mut count).await?; // __ Записываем в базу
-            // item.clear();
 
             group_code = item_code; // __ Запоминаем код группы
         } else if !cell_to_string_by_option(row.get(Material::CATEGORY_CODE_COL - 1)).is_empty() {
@@ -75,8 +70,6 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
                 // __ Парсим свойства
                 set_properties(&mut item, &mut properties);
                 store_item(&mut item, tx, &mut count).await?; // __ Записываем в базу
-                // item.clear();
-                // properties.clear();
             }
 
             let mut item_code = cell_to_string_by_option(row.get(Material::CATEGORY_CODE_COL - 1));
@@ -88,7 +81,6 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
             item.material_group_code_1c = Some(group_code.clone()); // __ Ссылаемся на группу
 
             store_item(&mut item, tx, &mut count).await?; // __ Записываем в базу
-            // item.clear();
 
             category_code = item_code; // __ Запоминаем код категории
         } else if !cell_to_string_by_option(row.get(Material::MATERIAL_CODE_COL - 1)).is_empty() {
@@ -96,8 +88,6 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
                 // __ Парсим свойства
                 set_properties(&mut item, &mut properties);
                 store_item(&mut item, tx, &mut count).await?; // __ Записываем в базу
-                // item.clear();
-                // properties.clear();
             }
 
             let mut item_code = cell_to_string_by_option(row.get(Material::MATERIAL_CODE_COL - 1));

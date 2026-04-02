@@ -5,15 +5,31 @@ mod importers; // __ Подключаем папку как модуль с им
 mod structures; // __ Подключаем папку как модуль со структурами данных
 
 use anyhow::{Context, Result};
+use constants::{IMPORT_PATH, MATERIALS_FILE_NAME, MODELS_FILE_NAME, PROCEDURES_FILE_NAME};
 use dotenvy::dotenv;
 use sqlx::postgres::PgPoolOptions;
 use std::env;
 use std::path::PathBuf;
-use constants::{IMPORT_PATH, CODE_1C_LENGTH};
-use crate::structures::material::Material;
+use std::time::Instant;
+// use stats_alloc::{Region, StatsAlloc, INSTRUMENTED_SYSTEM};
+// use std::alloc::System;
+// use dhat::Alloc;
+
+// #[global_allocator]
+// static ALLOCATOR: Alloc = Alloc;
+// static GLOBAL_ALLOC: &StatsAlloc<System> = &INSTRUMENTED_SYSTEM;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // __ Статистические измерения
+    let start_time = Instant::now();
+
+    // __ Инициализация профилировщика
+    // __ Файл dhat-heap.json запишется автоматически при выходе из main
+    // let _profiler = dhat::Profiler::builder().build();
+    // В Region мы тоже передаем ссылку на этот же объект
+    // let reg = Region::new(&INSTRUMENTED_SYSTEM);
+
     // __ Инициализация окружения
     dotenv().ok();
     let database_url = env::var("DATABASE_URL").context("DATABASE_URL must be set in .env file")?;
@@ -33,8 +49,6 @@ async fn main() -> Result<()> {
     // __ Сами отчеты
 
     // __ Процедуры
-    const PROCEDURES_FILE_NAME: &str = "procedures.xlsx"; // __ Процедуры
-
     // Явно указываем тип PathBuf, чтобы IDE не терялась
     let file_path = PathBuf::from(IMPORT_PATH).join(PROCEDURES_FILE_NAME); // push — это аналог join, который меняет путь на месте
 
@@ -51,13 +65,12 @@ async fn main() -> Result<()> {
     // __ Вызов импортера процедур. Передаем транзакцию по ссылке (&mut tx)
     println!("🚀 Начинаем импорт процедур из 1С/...");
 
-    importers::procedures::run(&mut tx, &path_str, 4, &CODE_1C_LENGTH)
+    importers::procedures::run(&mut tx, &path_str)
         .await
         .context("Ошибка при импорте процедур")?;
 
-
     // __ Материалы
-    let file_path = PathBuf::from(IMPORT_PATH).join(Material::MATERIALS_FILE_NAME); // push — это аналог join, который меняет путь на месте
+    let file_path = PathBuf::from(IMPORT_PATH).join(MATERIALS_FILE_NAME); // push — это аналог join, который меняет путь на месте
     let path_str = file_path.display().to_string();
 
     if !file_path.exists() {
@@ -71,10 +84,39 @@ async fn main() -> Result<()> {
         .await
         .context("Ошибка при импорте материалов")?;
 
+    // __ Модели
+    let file_path = PathBuf::from(IMPORT_PATH).join(MODELS_FILE_NAME);
+    let path_str = file_path.display().to_string();
+
+    if !file_path.exists() {
+        anyhow::bail!("Файл не найден: {:?}", file_path);
+    }
+
+    // __ Вызов импортера материалов. Передаем транзакцию по ссылке (&mut tx)
+    println!("🚀 Начинаем импорт моделей из 1С/...");
+
+    importers::models::run(&mut tx, &path_str)
+        .await
+        .context("Ошибка при импорте моделей")?;
 
     // __ Фиксация изменений
     tx.commit().await?;
 
     println!("🏁 Весь импорт завершен успешно!");
+
+    // __ Статистика по памяти
+    // let stats = reg.change();
+    // println!("Статистика по куче (heap): {:#?}", stats);
+    //
+    // __ Пик потребления в байтах:
+    // let current_usage = stats.bytes_allocated - stats.bytes_deallocated;
+    // println!("Текущее (итоговое) потребление: {} МБ", current_usage / 1024 / 1024);
+
+
+    // __ Статистика по времени
+    let duration = start_time.elapsed();
+    println!("Время выполнения: {:?}", duration);
+    println!("Прошло миллисекунд: {}", duration.as_millis());
+
     Ok(())
 }

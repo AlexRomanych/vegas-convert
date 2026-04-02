@@ -35,8 +35,8 @@ impl Material {
     /// **Название таблицы процедур**
     pub const MATERIALS_TABLE_NAME: &'static str = "materials";
 
-    /// **Название файла Excel с материалами**
-    pub const MATERIALS_FILE_NAME: &'static str = "materials.xlsx";
+    // /// **Название файла Excel с материалами**
+    // pub const MATERIALS_FILE_NAME: &'static str = "materials.xlsx"; - // __ Перенесли в constants
 
     /// **Стоп-слово окончания отчета ("Итого")**
     pub const STOP_WORD: &'static str = "Итого";
