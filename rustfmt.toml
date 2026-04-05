@@ -12,7 +12,7 @@ enum_discrim_align_threshold = 20
 if_else_single_line = true
 
 # Позволяет объединять простые блоки кода в одну строку
-single_line_if_else_max_width = 120
+single_line_if_else_max_width = 80
 
 # (Опционально) Аналогично для простых match, если они очень короткие
 match_arm_blocks = false

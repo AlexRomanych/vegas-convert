@@ -1,4 +1,4 @@
-#[allow(unused)]
+#![allow(unused)]
 use crate::constants::{
     DATA_SHEET_1C_NAME, MODEL_COLLECTIONS_TABLE_NAME, MODEL_MANUFACTURE_GROUPS_TABLE_NAME, MODEL_MANUFACTURE_STATUSES_TABLE_NAME,
     MODEL_MANUFACTURE_TYPES_TABLE_NAME, MODEL_TYPES_TABLE_NAME,
@@ -236,6 +236,7 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
     Ok(())
 }
 
+// ___ Записываем Модель в базу
 async fn store_item(model: &Model, tx: &mut Transaction<'_, Postgres>) -> Result<()> {
     // __ Создаем строку запроса динамически
     let query_str = format!(

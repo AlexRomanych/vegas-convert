@@ -1,10 +1,7 @@
 use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
-// use sqlx::types::{
-//     Json,
-//     chrono::{DateTime, Utc},
-// };
 // use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
+/* use sqlx::types::{Json, chrono::{DateTime, Utc}}; */
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Model {

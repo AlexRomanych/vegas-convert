@@ -1,14 +1,44 @@
 #![allow(unused)]
 use crate::constants::CODE_1C_LENGTH;
+use calamine::Data;
 use sqlx::{Postgres, Transaction};
 use std::str::FromStr;
-use calamine::Data;
+
+const REMOVABLE_BP: &str = "БП";
 
 /// **Возвращает приведенную к нормальному виду строку кода 1С**
 pub fn get_formatted_1c_code_string(raw_code: String) -> String {
     if raw_code.is_empty() {
         raw_code // __ возвращает пустую String
     } else {
+        let chars_count = raw_code.chars().count();
+        if chars_count > CODE_1C_LENGTH {
+            return raw_code
+                .chars()
+                .rev() // Разворачиваем строку задом наперед
+                .take(CODE_1C_LENGTH) // Берем 9 символов
+                .collect::<String>() // Собираем обратно
+                .chars() // Снова превращаем в символы
+                .rev() // Разворачиваем в правильный порядок
+                .collect(); // Итог: "000000086"
+
+            // return raw_code[raw_code.len() - CODE_1C_LENGTH - 1..].to_string()
+
+            // __ Если строка может быть короче 9 символов, а тебе нужно строго забрать то, что есть, можно сделать чуть проще через skip
+            // return raw_code
+            //     .chars()
+            //     .skip(count.saturating_sub(CODE_1C_LENGTH)) // Пропускаем всё, кроме последних 9
+            //     .collect();
+        };
+
+
+        // __ Убираем БП
+        // let mut result_str = String::from(raw_code.clone());
+        // if result_str.len() > CODE_1C_LENGTH && result_str.contains(REMOVABLE_BP) {
+        //     result_str = result_str.strip_suffix(REMOVABLE_BP).unwrap_or(&result_str).to_string();
+        // }
+
+
         format!("{:0>width$}", raw_code, width = CODE_1C_LENGTH) // __ возвращает отформатированную String
     }
 }
@@ -53,7 +83,7 @@ pub fn cell_to_string_by_option(data_option: Option<&Data>) -> String {
 /// **Возвращает данные Excel ячейки в строковом формате по Option<Data>**
 pub fn cell_to_generic<T>(data_option: Option<&Data>) -> Option<T>
 where
-    T: FromStr
+    T: FromStr,
 {
     let s = match data_option {
         Some(Data::String(s)) => s.to_string(),
@@ -68,13 +98,12 @@ where
 }
 
 /// **Очищает таблицу**
-pub async fn truncate_table(
-    table_name: &str,
-    tx: &mut Transaction<'_, Postgres>,
-) -> anyhow::Result<()> {
+pub async fn truncate_table(table_name: &str, tx: &mut Transaction<'_, Postgres>) -> anyhow::Result<()> {
     let query = format!("TRUNCATE TABLE {} RESTART IDENTITY CASCADE", table_name);
 
-    sqlx::query(&query).execute(&mut **tx).await?; // __ Если здесь будет ошибка, она уйдет в вызывающий код
+    sqlx::query(&query)
+        .execute(&mut **tx)
+        .await?; // __ Если здесь будет ошибка, она уйдет в вызывающий код
 
     Ok(()) // __ Возвращаем "пустой" успех
 }

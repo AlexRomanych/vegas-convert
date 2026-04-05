@@ -5,7 +5,7 @@ mod importers; // __ Подключаем папку как модуль с им
 mod structures; // __ Подключаем папку как модуль со структурами данных
 
 use anyhow::{Context, Result};
-use constants::{IMPORT_PATH, MATERIALS_FILE_NAME, MODELS_FILE_NAME, PROCEDURES_FILE_NAME};
+use constants::{IMPORT_PATH, MATERIALS_FILE_NAME, MODELS_FILE_NAME, PROCEDURES_FILE_NAME, SPECIFICATIONS_FILE_NAME};
 use dotenvy::dotenv;
 use sqlx::postgres::PgPoolOptions;
 use std::env;
@@ -65,9 +65,9 @@ async fn main() -> Result<()> {
     // __ Вызов импортера процедур. Передаем транзакцию по ссылке (&mut tx)
     println!("🚀 Начинаем импорт процедур из 1С/...");
 
-    importers::procedures::run(&mut tx, &path_str)
-        .await
-        .context("Ошибка при импорте процедур")?;
+    // importers::procedures::run(&mut tx, &path_str)
+    //     .await
+    //     .context("Ошибка при импорте процедур")?;
 
     // __ Материалы
     let file_path = PathBuf::from(IMPORT_PATH).join(MATERIALS_FILE_NAME); // push — это аналог join, который меняет путь на месте
@@ -95,9 +95,26 @@ async fn main() -> Result<()> {
     // __ Вызов импортера материалов. Передаем транзакцию по ссылке (&mut tx)
     println!("🚀 Начинаем импорт моделей из 1С/...");
 
-    importers::models::run(&mut tx, &path_str)
+    // importers::models::run(&mut tx, &path_str)
+    //     .await
+    //     .context("Ошибка при импорте моделей")?;
+
+    // __ Спецификации
+    let file_path = PathBuf::from(IMPORT_PATH).join(SPECIFICATIONS_FILE_NAME);
+    let path_str = file_path.display().to_string();
+
+    if !file_path.exists() {
+        anyhow::bail!("Файл не найден: {:?}", file_path);
+    }
+
+    // __ Вызов импортера материалов. Передаем транзакцию по ссылке (&mut tx)
+    println!("🚀 Начинаем импорт Спецификаций из 1С/...");
+
+    importers::specifications::run(&mut tx, &path_str)
         .await
-        .context("Ошибка при импорте моделей")?;
+        .context("Ошибка при импорте спецификаций")?;
+
+
 
     // __ Фиксация изменений
     tx.commit().await?;

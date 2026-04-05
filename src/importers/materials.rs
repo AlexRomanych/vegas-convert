@@ -1,11 +1,6 @@
 #![allow(unused)]
 use crate::constants::DATA_SHEET_1C_NAME;
-use crate::helpers::{
-    cell_to_string_by_option,
-    get_formatted_1c_code_string,
-    get_formatted_unit_string,
-    // truncate_table,
-};
+use crate::helpers::{cell_to_string_by_option, get_formatted_1c_code_string, get_formatted_unit_string, truncate_table};
 use crate::structures::material::Material;
 use anyhow::{Context, Result};
 use calamine::{Reader, Xlsx, open_workbook};
@@ -15,7 +10,7 @@ use std::collections::HashMap;
 
 pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
     // __ Очищает данные и сбрасывает счетчики ID (SERIAL) в начальное состояние
-    //truncate_table(Material::MATERIALS_TABLE_NAME, tx).await?;
+    // truncate_table(Material::MATERIALS_TABLE_NAME, tx).await?;
 
     // __ Сбрасываем флаг is_modify
     reset_modify_flag(tx).await?;
@@ -147,7 +142,7 @@ fn set_properties(material: &mut Material, properties: &mut HashMap<String, Valu
     properties.clear();
 }
 
-async fn store_item(
+pub async fn store_item(
     material: &mut Material,
     tx: &mut Transaction<'_, Postgres>,
     count: &mut i32,
