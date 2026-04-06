@@ -30,7 +30,7 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
         })?;
 
     // __ Список всех данных - Собираем все сюда
-    // let mut excel_data: HashMap<String, Model> = HashMap::new();
+    let mut excel_data: HashMap<String, Model> = HashMap::new();
 
     // __ Список всех попавшихся Статусов
     let mut statuses_map: HashMap<i64, String> = HashMap::new();
@@ -186,9 +186,8 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
             // updated_at: None,
         };
 
-        // __ Сохраняем в бд
-        store_item(&temp_model, tx).await?;
-
+        // __ Сохраняем в мапу
+        excel_data.insert(code_1c, temp_model);
         count += 1;
     }
 
@@ -200,6 +199,11 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
     check_entity(tx, statuses_map, MODEL_MANUFACTURE_STATUSES_TABLE_NAME).await?; // __ Статусы производства
     check_entity(tx, manufacture_types_map, MODEL_MANUFACTURE_TYPES_TABLE_NAME).await?; // __ Типы производства
     check_entity(tx, models_types_map, MODEL_TYPES_TABLE_NAME).await?; // __ Типы изделий
+
+    // __ Только теперь, после всех проверок вставляем в базу
+    for (code_1c, temp_model) in excel_data {
+        store_item(&temp_model, tx).await?; // __ Сохраняем в бд
+    }
 
     // __ Делаем проверку на то, чтобы существовал элемент чехла (запись) по рекурсивной ссылке cover_code_1c
     // __ Чтение всех Моделей из базы для проверки ключа
@@ -305,7 +309,9 @@ async fn store_item(model: &Model, tx: &mut Transaction<'_, Postgres>) -> Result
         "#,
         Model::MODELS_TABLE_NAME
     );
-    sqlx::query(&query_str)
+
+    // __ Выполняем вставку с обновлением при конфликте
+    let result = sqlx::query(&query_str)
         // 1-8: Ключи и связи (Strings & IDs)
         .bind(&model.code_1c) // $1
         .bind(model.model_manufacture_status_id) // $2 (Option<i64>)
@@ -355,9 +361,15 @@ async fn store_item(model: &Model, tx: &mut Transaction<'_, Postgres>) -> Result
         .bind(model.lamit) // $41 (Option<bool>)
         .bind(&model.cover_name_1c)
         .execute(&mut **tx)
-        .await?;
+        .await;
 
-    // __ Выполняем вставку с обновлением при конфликте
+        match result {
+            Ok(res) => {}
+            Err(err) => {
+                println!("Model: {:#?}", model);
+                panic!();
+            }
+        }
 
     // *count += 1;
 

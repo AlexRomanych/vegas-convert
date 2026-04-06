@@ -214,7 +214,8 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
     // __ Вставляем в БД пропущенные материалы
     for (code_1c, missing_material) in missing_materials {
         let mut store_material = Material {
-            material_group_code_1c: Some(MISSING_MATERIALS_GROUP_CODE_1C.to_string()),
+            material_group_code_1c: None, // __ Тут именно None
+            // material_group_code_1c: Some(MISSING_MATERIALS_GROUP_CODE_1C.to_string()),
             material_category_code_1c: Some(MISSING_MATERIALS_CATEGORY_CODE_1C.to_string()),
             code_1c,
             name: missing_material.name_1c,

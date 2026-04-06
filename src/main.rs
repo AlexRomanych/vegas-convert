@@ -49,7 +49,7 @@ async fn main() -> Result<()> {
     // __ Сами отчеты
 
     // __ Процедуры
-    // Явно указываем тип PathBuf, чтобы IDE не терялась
+    // __ Явно указываем тип PathBuf, чтобы IDE не терялась
     let file_path = PathBuf::from(IMPORT_PATH).join(PROCEDURES_FILE_NAME); // push — это аналог join, который меняет путь на месте
 
     // let mut file_path = PathBuf::from(IMPORT_PATH);
@@ -62,12 +62,12 @@ async fn main() -> Result<()> {
         anyhow::bail!("Файл не найден: {:?}", file_path);
     }
 
-    // __ Вызов импортера процедур. Передаем транзакцию по ссылке (&mut tx)
+    // __ Вызов импортера Процедур. Передаем транзакцию по ссылке (&mut tx)
     println!("🚀 Начинаем импорт процедур из 1С/...");
 
-    // importers::procedures::run(&mut tx, &path_str)
-    //     .await
-    //     .context("Ошибка при импорте процедур")?;
+    importers::procedures::run(&mut tx, &path_str)
+        .await
+        .context("Ошибка при импорте процедур")?;
 
     // __ Материалы
     let file_path = PathBuf::from(IMPORT_PATH).join(MATERIALS_FILE_NAME); // push — это аналог join, который меняет путь на месте
@@ -77,7 +77,7 @@ async fn main() -> Result<()> {
         anyhow::bail!("Файл не найден: {:?}", file_path);
     }
 
-    // __ Вызов импортера материалов. Передаем транзакцию по ссылке (&mut tx)
+    // __ Вызов импортера Материалов. Передаем транзакцию по ссылке (&mut tx)
     println!("🚀 Начинаем импорт материалов из 1С/...");
 
     importers::materials::run(&mut tx, &path_str)
@@ -92,12 +92,12 @@ async fn main() -> Result<()> {
         anyhow::bail!("Файл не найден: {:?}", file_path);
     }
 
-    // __ Вызов импортера материалов. Передаем транзакцию по ссылке (&mut tx)
+    // __ Вызов импортера Моделей. Передаем транзакцию по ссылке (&mut tx)
     println!("🚀 Начинаем импорт моделей из 1С/...");
 
-    // importers::models::run(&mut tx, &path_str)
-    //     .await
-    //     .context("Ошибка при импорте моделей")?;
+    importers::models::run(&mut tx, &path_str)
+        .await
+        .context("Ошибка при импорте моделей")?;
 
     // __ Спецификации
     let file_path = PathBuf::from(IMPORT_PATH).join(SPECIFICATIONS_FILE_NAME);
