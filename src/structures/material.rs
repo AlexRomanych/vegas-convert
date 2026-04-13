@@ -3,7 +3,7 @@ use serde_json::Value;
 use sqlx::types::Json;
 use std::collections::HashMap;
 
-#[derive(Default, Debug, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Material {
     /// **Связь с Группой материалов - Группа материала (связь с ячейкой этой же таблицы)**
     pub material_group_code_1c: Option<String>,

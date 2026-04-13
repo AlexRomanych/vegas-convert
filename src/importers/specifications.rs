@@ -214,8 +214,8 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
     // __ Вставляем в БД пропущенные материалы
     for (code_1c, missing_material) in missing_materials {
         let mut store_material = Material {
-            material_group_code_1c: None, // __ Тут именно None
-            // material_group_code_1c: Some(MISSING_MATERIALS_GROUP_CODE_1C.to_string()),
+            // material_group_code_1c: None, // __ Тут именно None
+            material_group_code_1c: Some(MISSING_MATERIALS_GROUP_CODE_1C.to_string()),
             material_category_code_1c: Some(MISSING_MATERIALS_CATEGORY_CODE_1C.to_string()),
             code_1c,
             name: missing_material.name_1c,
@@ -226,7 +226,15 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
         };
 
         let mut count = 0;
-        materials::store_item(&mut store_material, tx, &mut count).await?;
+        let mut cloned_material = store_material.clone();
+        materials::store_item(&mut cloned_material, tx, &mut count).await?;
+
+        // __ Тут решаем следующую ситуацию:
+        // __ Когда мы заполняем первым проходом спецификации, для отсутствующих в таблице materials
+        // __ в строке спецификаций заполняем только material_code_1c_copy, а material_code_1c остается в null.
+        // __ Заменяем эти null на коды пропущенных материалов, после того, как мы добавили их в таблицу materials.
+
+        update_missing_materials_code_1c(store_material,tx).await?;
     }
 
     println!("Count = {}", count);
@@ -234,7 +242,29 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
     Ok(())
 }
 
-// ___ Получаем мапу из первичных ключей (code_1c) для проверки внешних ключей
+// ___ Обновляем внешний ключ (material_code_1c) на пропущенные материалы в таблице model_construct_items
+// ___ после вставки пропущенных в спецификациях материалов в таблицу materials.
+async fn update_missing_materials_code_1c(material: Material, tx: &mut Transaction<'_, Postgres>) -> Result<()> {
+    // __ Создаем строку запроса динамически
+    let query_str = format!(
+        r#"
+            UPDATE {} SET material_code_1c = $1 WHERE material_code_1c_copy = $2
+        "#,
+        ModelConstructItem::CONSTRUCT_ITEM_TABLE_NAME
+    );
+
+    sqlx::query(&query_str)
+        .bind(&material.code_1c) // $1
+        .bind(&material.code_1c) // $1
+        .execute(&mut **tx)
+        .await?;
+
+    Ok(())
+}
+
+
+
+// ___ Получаем мапу из первичных ключей (code_1c) для проверки внешних ключей (для согласования ограничений внешнего ключа)
 async fn get_entity(tx: &mut Transaction<'_, Postgres>, table_name: &str) -> Result<HashMap<String, String>> {
     // Используем anyhow::Result
     let mut entity_map_base: HashMap<String, String> = HashMap::new();

@@ -60,6 +60,7 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
             store_item(&mut item, tx, &mut count).await?; // __ Записываем в базу
 
             group_code = item_code; // __ Запоминаем код группы
+
         } else if !cell_to_string_by_option(row.get(Material::CATEGORY_CODE_COL - 1)).is_empty() {
             if !item.is_empty() {
                 // __ Парсим свойства
@@ -254,7 +255,7 @@ pub async fn store_item(
     //     Material::MATERIALS_TABLE_NAME
     // );
 
-    // __ Выполняем вставку с обновлением при конфликте
+    // __ Выполняем вставку материала с обновлением при конфликте
     sqlx::query(&query_str)
         .bind(&material.code_1c)
         .bind(&material.code_1c)
