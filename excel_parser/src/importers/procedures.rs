@@ -1,11 +1,12 @@
 use crate::constants::DATA_SHEET_1C_NAME;
-use crate::helpers::{cell_to_string_by_option, get_formatted_1c_code_string};
+use crate::helpers::{cell_to_string_by_option, get_formatted_1c_code_string, truncate_table};
 use crate::structures::procedure::ModelConstructProcedure;
 use anyhow::{Context, Result};
 use calamine::{Reader, Xlsx, open_workbook};
 use sqlx::{Postgres, Transaction};
 use std::collections::HashMap;
 use std::sync::OnceLock;
+use crate::structures::specification::ModelConstruct;
 
 // __ Создаем "ленивое" хранилище
 static KEYS_MATRIX: OnceLock<HashMap<&str, &str>> = OnceLock::new();
@@ -39,9 +40,7 @@ fn get_keys_matrix() -> &'static HashMap<&'static str, &'static str> {
 
 pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
     // __ Очищает данные и сбрасывает счетчики ID (SERIAL) в начальное состояние
-    sqlx::query("TRUNCATE TABLE models RESTART IDENTITY CASCADE")
-        .execute(&mut **tx)
-        .await?;
+    truncate_table(ModelConstructProcedure::PROCEDURES_TABLE_NAME, tx).await?;
 
     let mut workbook: Xlsx<_> = open_workbook(path)
         .with_context(|| format!("Не удалось открыть файл процедур: {}", path))?;
@@ -435,7 +434,7 @@ fn translate_line(mut russian_line: String, vars: &mut HashMap<String, String>) 
     // __ Предупреждение("Не задана высота Доклейки ППУ");
     // __ КонецЕсли;
     if russian_line_mod.contains("ЗначениеЗаполнено") {
-        let mut return_string = String::from("If missingValue Then ' ");
+        let mut return_string = String::from("If missingValue = 0 Then ' ");
         return_string.push_str(&russian_line_mod);
         russian_line = return_string.clone();
         russian_line_mod = return_string;
