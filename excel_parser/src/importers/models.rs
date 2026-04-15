@@ -130,8 +130,16 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
             code_1c: code_1c.clone(),
             model_manufacture_status_id,
             model_manufacture_status_name,
-            model_collection_code_1c: if !model_collection_code_1c.is_empty() { Some(model_collection_code_1c) } else { None },
-            model_collection_name: if !model_collection_name.is_empty() { Some(model_collection_name) } else { None },
+            model_collection_code_1c: if !model_collection_code_1c.is_empty() {
+                Some(model_collection_code_1c)
+            } else {
+                None
+            },
+            model_collection_name: if !model_collection_name.is_empty() {
+                Some(model_collection_name)
+            } else {
+                None
+            },
             model_type_code_1c: if !model_type_code_1c.is_empty() { Some(model_type_code_1c) } else { None },
             model_type_name: if !model_type_name.is_empty() { Some(model_type_name) } else { None },
             serial: cell_to_generic(row.get(Model::MODEL_SERIAL_COL - 1)),
@@ -170,10 +178,19 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
             side_height: cell_to_generic(row.get(Model::SIDE_HEIGHT_COL - 1)),
             pack_weight_rb: Decimal::from_str(cell_to_string_by_option(row.get(Model::PACK_WEIGHT_RB_COL - 1)).as_str()).ok(),
             pack_weight_ex: Decimal::from_str(cell_to_string_by_option(row.get(Model::PACK_WEIGHT_EX_COL - 1)).as_str()).ok(),
-            model_manufacture_type_code_1c: if !model_manufacture_type_code_1c.is_empty() { Some(model_manufacture_type_code_1c) } else { None },
-            model_manufacture_type_name: if !model_manufacture_type_name.is_empty() { Some(model_manufacture_type_name) } else { None },
+            model_manufacture_type_code_1c: if !model_manufacture_type_code_1c.is_empty() {
+                Some(model_manufacture_type_code_1c)
+            } else {
+                None
+            },
+            model_manufacture_type_name: if !model_manufacture_type_name.is_empty() {
+                Some(model_manufacture_type_name)
+            } else {
+                None
+            },
             weight: Decimal::from_str(cell_to_string_by_option(row.get(Model::WEIGHT_COL - 1)).as_str()).unwrap_or_default(),
             barcode: cell_to_generic(row.get(Model::BARCODE_COL - 1)),
+            kdch: cell_to_generic(row.get(Model::KDCH_COL - 1)),
             // active: false,
             // description: None,
             // comment: None,
@@ -236,7 +253,7 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
     // println!("Коллекции {:#?} models", collections_map);
     // println!("Коллекции_Бд {:#?} models", collections_map_base);
 
-    println!("✅ Материалы: импортировано {} строк", count);
+    println!("✅ Модели: импортировано {} строк", count);
     Ok(())
 }
 
@@ -253,14 +270,14 @@ async fn store_item(model: &Model, tx: &mut Transaction<'_, Postgres>) -> Result
                 stitch_pattern, pack_type, base_composition, side_foam, base_block,
                 cover_mark, model_mark, owner, sewing_machine, kant, tkch, side_height,
                 barcode, base_height, cover_height, pack_density, pack_weight_rb,
-                pack_weight_ex, weight, load, guarantee, life, lamit, cover_name_1c,
+                pack_weight_ex, weight, load, guarantee, life, lamit, cover_name_1c, kdch,
                 created_at, updated_at
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
                 $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
                 $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
-                $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42,
+                $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43,
                 NOW() AT TIME ZONE 'Europe/Minsk', NOW() AT TIME ZONE 'Europe/Minsk'
             )
             ON CONFLICT (code_1c) DO UPDATE SET
@@ -305,6 +322,7 @@ async fn store_item(model: &Model, tx: &mut Transaction<'_, Postgres>) -> Result
                 life                            = EXCLUDED.life,
                 lamit                           = EXCLUDED.lamit,
                 cover_name_1c                   = EXCLUDED.cover_name_1c,
+                kdch                            = EXCLUDED.kdch,
                 updated_at                      = NOW() AT TIME ZONE 'Europe/Minsk'
         "#,
         Model::MODELS_TABLE_NAME
@@ -360,16 +378,17 @@ async fn store_item(model: &Model, tx: &mut Transaction<'_, Postgres>) -> Result
         .bind(model.life) // $40 (Option<i32>)
         .bind(model.lamit) // $41 (Option<bool>)
         .bind(&model.cover_name_1c)
+        .bind(&model.kdch)
         .execute(&mut **tx)
         .await;
 
-        match result {
-            Ok(res) => {}
-            Err(err) => {
-                println!("Model: {:#?}", model);
-                panic!();
-            }
-        }
+    match result {
+        Ok(res) => {},
+        Err(err) => {
+            println!("Model: {:#?}", model);
+            panic!();
+        },
+    }
 
     // *count += 1;
 

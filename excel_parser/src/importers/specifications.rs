@@ -237,7 +237,7 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
         update_missing_materials_code_1c(store_material,tx).await?;
     }
 
-    println!("Count = {}", count);
+    println!("Спецификации: импортировано {count} строк");
 
     Ok(())
 }

@@ -49,6 +49,8 @@ pub struct Model {
     pub tkch:                Option<String>, // __ 'ТКЧ.36 (Типовая конструкция чехла)'
     pub side_height:         Option<String>, // __ 'Высота бортов.38'
     pub barcode:             Option<String>, // __ 'Штрих код.44'
+    pub kdch:                Option<String>, // __ 'Номер КДЧ.45'
+
     // pub description:         Option<String>, // __ Описание
     // pub comment:             Option<String>, // __ Комментарий
     // pub note:                Option<String>, // __ Примечание
@@ -65,21 +67,22 @@ pub struct Model {
     pub load:      Option<i32>, // __ 'Нагрузка.26' unsignedInteger -> i32
     pub guarantee: Option<i32>, // __ 'Гарантийный срок, мес.27' unsignedInteger
     pub life:      Option<i32>, // __ 'Срок службы, лет.28' unsignedInteger
+
     // pub status:    Option<i16>, // __ Статус unsignedSmallInteger -> i16
 
     // ___ Флаги (Boolean)
-    pub lamit:  Option<bool>, // __ 'Возможность изготовления на линии (Lamit).33'
-    // pub active: bool,         // __ 'Активный или Архивный.45' default true, nullable(false)
+    pub lamit: Option<bool>, // __ 'Возможность изготовления на линии (Lamit).33'
+                             // pub active: bool,         // __ 'Активный или Архивный.45' default true, nullable(false)
 
-    // ___ JSONB Поля (Спецификации)
-    // ___ Используем serde_json::Value для гибкости или конкретные структуры
-    // pub base:  Option<Json<serde_json::Value>>, // __ 'Спецификация МЭ'
-    // pub cover: Option<Json<serde_json::Value>>, // __ 'Спецификация чехла'
-    // pub meta:  Option<Json<serde_json::Value>>, // __ 'Метаданные'
+                             // ___ JSONB Поля (Спецификации)
+                             // ___ Используем serde_json::Value для гибкости или конкретные структуры
+                             // pub base:  Option<Json<serde_json::Value>>, // __ 'Спецификация МЭ'
+                             // pub cover: Option<Json<serde_json::Value>>, // __ 'Спецификация чехла'
+                             // pub meta:  Option<Json<serde_json::Value>>, // __ 'Метаданные'
 
-    // ___ Timestamps
-    // pub created_at: Option<DateTime<Utc>>,
-    // pub updated_at: Option<DateTime<Utc>>,
+                             // ___ Timestamps
+                             // pub created_at: Option<DateTime<Utc>>,
+                             // pub updated_at: Option<DateTime<Utc>>,
 }
 
 impl Model {
@@ -146,4 +149,5 @@ impl Model {
 
     pub const WEIGHT_COL: usize = 43;
     pub const BARCODE_COL: usize = 44;
+    pub const KDCH_COL: usize = 45;
 }
