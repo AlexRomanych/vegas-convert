@@ -40,3 +40,4 @@ serde_json = "1.0"
 #dhat = "0.3.3"
 
 common_logger = { path = "../common_logger" }
+tracing = "0.1"
