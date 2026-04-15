@@ -377,6 +377,7 @@ async fn store_item(model: &Model, tx: &mut Transaction<'_, Postgres>) -> Result
         .bind(model.guarantee) // $39 (Option<i32>)
         .bind(model.life) // $40 (Option<i32>)
         .bind(model.lamit) // $41 (Option<bool>)
+        // Добавлено позже
         .bind(&model.cover_name_1c)
         .bind(&model.kdch)
         .execute(&mut **tx)
