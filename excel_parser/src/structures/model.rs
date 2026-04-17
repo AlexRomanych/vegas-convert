@@ -1,6 +1,8 @@
 use rust_decimal::Decimal;
 // use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use crate::structures::custom_errors::CustomError;
+use crate::structures::traits::ExcelPattern;
 /* use sqlx::types::{Json, chrono::{DateTime, Utc}}; */
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
@@ -89,6 +91,9 @@ impl Model {
     /// **Название таблицы моделей**
     pub const MODELS_TABLE_NAME: &'static str = "models";
 
+    /// **Номер строки с заголовками**
+    pub const DATA_CHECK_ROW: usize = 4;
+
     /// **Номер строки начала данных**
     pub const DATA_START_ROW: usize = 5;
 
@@ -151,3 +156,70 @@ impl Model {
     pub const BARCODE_COL: usize = 44;
     pub const KDCH_COL: usize = 45;
 }
+
+// __ Описываем правила для Модели
+impl ExcelPattern for Model {
+
+    #[rustfmt::skip] // Запрещаем форматеру трогать этот массив
+    const CHECK_PATTERN: &'static [(usize, &'static str)] = &[
+        (Model::CODE_1C_COL, "Код"),
+        (Model::MODEL_MANUFACTURE_STATUS_COL,       "Порядок, Статус"),
+        (Model::MODEL_COLLECTION_CODE_1C_COL,       "Коллекция.Код"),
+        (Model::MODEL_COLLECTION_NAME_COL,          "Коллекция.Наименование"),
+        (Model::MODEL_TYPE_CODE_1C_COL,             "Тип продукции.Код"),
+        (Model::MODEL_TYPE_NAME_COL,                "Тип продукции.Наименование"),
+        (Model::MODEL_SERIAL_COL,                   "Серия"),
+        (Model::NAME_COL,                           "Наименование"),
+        (Model::NAME_SHORT_COL,                     "Наименование краткое"),
+        (Model::NAME_COMMON_COL,                    "Наименование общее"),
+        (Model::NAME_REPORT_COL,                    "Имя отчеты"),
+        (Model::COVER_CODE_1C_COL,                  "Модель чехла.Код"),
+        (Model::COVER_NAME_1C_COL,                  "Модель чехла.Наименование"),
+        (Model::BASE_HEIGHT_COL,                    "Стандартная высота"),
+        (Model::COVER_HEIGHT_COL,                   "Стандартная высота чехла"),
+        (Model::TEXTILE_COL,                        "Ткань"),
+        (Model::TEXTILE_COMPOSITION_COL,            "Состав ткани"),
+        (Model::COVER_TYPE_COL,                     "Тип чехла.Наименование"),
+        (Model::ZIPPER_COL,                         "Молния"),
+        (Model::SPACER_COL,                         "Прокладочный материал.Наименование"),
+        (Model::STITCH_PATTERN_COL,                 "Рисунок стежки.Наименование"),
+        (Model::PACK_TYPE_COL,                      "Вид упаковки.Наименование"),
+        (Model::BASE_COMPOSITION_COL,               "Состав мягкого элемента"),
+        (Model::SIDE_FOAM_COL,                      "ППУ бортов"),
+        (Model::BASE_BLOCK_COL,                     "Базовый блок"),
+        (Model::LOAD_COL,                           "Нагрузка"),
+        (Model::GUARANTEE_COL,                      "Гарантийный срок, мес."),
+        (Model::LIFE_COL,                           "Срок службы, лет"),
+        (Model::COVER_MARK_COL,                     "Маркировка чехла"),
+        (Model::MODEL_MARK_COL,                     "Маркировка матраса"),
+        (Model::MODEL_MANUFACTURE_GROUP_ID_COL,     "Номер группы модели для сортировки"),
+        (Model::OWNER_COL,                          "Владелец"),
+        (Model::LAMIT_COL,                          "Возможно изготовление на линии"),
+        (Model::SEWING_MACHINE_COL,                 "Группы ДСЗ"),
+        (Model::KANT_COL,                           "Кант"),
+        (Model::TKCH_COL,                           "ТКЧ"),
+        (Model::PACK_DENSITY_COL,                   "Плотность упаковки"),
+        (Model::SIDE_HEIGHT_COL,                    "Высота бортов"),
+        (Model::PACK_WEIGHT_RB_COL,                 "Вес упаковки РБ"),
+        (Model::PACK_WEIGHT_EX_COL,                 "Вес упаковки экспорт"),
+        (Model::MODEL_MANUFACTURE_TYPE_CODE_1C_COL, "Вид производства.Код"),
+        (Model::MODEL_MANUFACTURE_TYPE_NAME_COL,    "Вид производства.Наименование"),
+        (Model::WEIGHT_COL,                         "Вес в г."),
+        (Model::BARCODE_COL,                        "Штрих код"),
+        (Model::KDCH_COL,                           "Номер КДЧ"),
+    ];
+
+    fn get_check_row() -> usize {
+        Self::DATA_CHECK_ROW - 1
+    }
+
+    fn get_error() -> CustomError {
+        CustomError::ErrorStructureModelsFile
+    }
+}
+
+
+
+
+
+

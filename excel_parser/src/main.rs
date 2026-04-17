@@ -2,8 +2,12 @@
 mod constants; // __ Подключаем константы
 mod helpers;
 mod importers; // __ Подключаем папку как модуль с импортерами из Excel в Postgres
-mod structures; // __ Подключаем папку как модуль со структурами данных
+mod structures;
+mod checkers;
+// __ Подключаем папку как модуль со структурами данных
 
+
+use std::io::{self, Write};
 use anyhow::{Context, Result};
 use constants::{IMPORT_PATH, MATERIALS_FILE_NAME, MODELS_FILE_NAME, PROCEDURES_FILE_NAME, SPECIFICATIONS_FILE_NAME};
 use dotenvy::dotenv;
@@ -11,6 +15,10 @@ use sqlx::postgres::PgPoolOptions;
 use std::env;
 use std::path::PathBuf;
 use std::time::Instant;
+use serde_json::json;
+use sqlx::types::Json;
+use logger::structures::log_message::{LogLevel, LogMessage, LogTarget};
+use crate::constants::PRODUCTION;
 // use stats_alloc::{Region, StatsAlloc, INSTRUMENTED_SYSTEM};
 // use std::alloc::System;
 // use dhat::Alloc;
@@ -19,8 +27,13 @@ use std::time::Instant;
 // static ALLOCATOR: Alloc = Alloc;
 // static GLOBAL_ALLOC: &StatsAlloc<System> = &INSTRUMENTED_SYSTEM;
 
+// __ Определяем, как выводить логи
+
+
 #[tokio::main]
 async fn main() -> Result<()> {
+
+
     // __ Статистические измерения
     let start_time = Instant::now();
 
@@ -39,9 +52,20 @@ async fn main() -> Result<()> {
         .max_connections(5)
         .connect(&database_url)
         .await
-        .context("Failed to connect to Postgres")?;
+        .context("Ошибка соединения с базой данных")?;
+    // .context("Failed to connect to Postgres")?;
 
-    println!("✅ Связь с базой установлена.");
+    if !PRODUCTION { println!("✅ Связь с базой установлена.") };
+
+    let inform_message = LogMessage {
+        level: LogLevel::INFO,
+        target: LogTarget::ModelsUpdate,
+        message: "Начало обновления".to_string(),
+        context: None,
+        created_at: None,
+    };
+    inform_message.write(&pool).await.ok();
+
 
     // __ Создаем транзакцию (если один файл упадет, база не засорится)
     let mut tx = pool.begin().await?;
@@ -63,9 +87,9 @@ async fn main() -> Result<()> {
     }
 
     // __ Вызов импортера Процедур. Передаем транзакцию по ссылке (&mut tx)
-    println!("🚀 Начинаем импорт процедур из 1С/...");
+    if !PRODUCTION { println!("🚀 Начинаем импорт процедур из 1С/...") };
 
-    importers::procedures::run(&mut tx, &path_str)
+    importers::procedures::run(&mut tx, &path_str, &pool)
         .await
         .context("Ошибка при импорте процедур")?;
 
@@ -78,9 +102,9 @@ async fn main() -> Result<()> {
     }
 
     // __ Вызов импортера Материалов. Передаем транзакцию по ссылке (&mut tx)
-    println!("🚀 Начинаем импорт материалов из 1С/...");
+    if !PRODUCTION { println!("🚀 Начинаем импорт материалов из 1С/...") };
 
-    importers::materials::run(&mut tx, &path_str)
+    importers::materials::run(&mut tx, &path_str, &pool)
         .await
         .context("Ошибка при импорте материалов")?;
 
@@ -93,9 +117,9 @@ async fn main() -> Result<()> {
     }
 
     // __ Вызов импортера Моделей. Передаем транзакцию по ссылке (&mut tx)
-    println!("🚀 Начинаем импорт моделей из 1С/...");
+    if !PRODUCTION { println!("🚀 Начинаем импорт моделей из 1С/...") };
 
-    importers::models::run(&mut tx, &path_str)
+    importers::models::run(&mut tx, &path_str, &pool)
         .await
         .context("Ошибка при импорте моделей")?;
 
@@ -108,18 +132,17 @@ async fn main() -> Result<()> {
     }
 
     // __ Вызов импортера Спецификаций. Передаем транзакцию по ссылке (&mut tx)
-    println!("🚀 Начинаем импорт Спецификаций из 1С/...");
+    if !PRODUCTION { println!("🚀 Начинаем импорт Спецификаций из 1С/...") };
 
-    importers::specifications::run(&mut tx, &path_str)
+    importers::specifications::run(&mut tx, &path_str, &pool)
         .await
         .context("Ошибка при импорте спецификаций")?;
-
 
 
     // __ Фиксация изменений
     tx.commit().await?;
 
-    println!("🏁 Весь импорт завершен успешно!");
+    if !PRODUCTION { println!("🏁 Весь импорт завершен успешно!") };
 
     // __ Статистика по памяти
     // let stats = reg.change();
@@ -132,8 +155,26 @@ async fn main() -> Result<()> {
 
     // __ Статистика по времени
     let duration = start_time.elapsed();
-    println!("Время выполнения: {:?}", duration);
-    println!("Прошло миллисекунд: {}", duration.as_millis());
+    if !PRODUCTION {
+        println!("Время выполнения: {:?}", duration);
+        println!("Прошло миллисекунд: {}", duration.as_millis());
+    }
 
+    let inform_message = LogMessage {
+        level: LogLevel::INFO,
+        target: LogTarget::ModelsUpdate,
+        message: "Окончание обновления".to_string(),
+        context: Some(Json(json!({
+            "elapsed_time, sec.": format!("{:?}", duration),
+        }))),
+        created_at: None,
+    };
+    inform_message.write(&pool).await.ok();
+
+    // __ Принудительно толкаем в буфер
+    io::stdout().flush()?;
+    // io::stdout().flush().unwrap();
+
+    if PRODUCTION { println!("0") };
     Ok(())
 }

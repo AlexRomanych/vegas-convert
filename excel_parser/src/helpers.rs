@@ -1,8 +1,13 @@
 #![allow(unused)]
 use crate::constants::CODE_1C_LENGTH;
-use calamine::Data;
-use sqlx::{Postgres, Transaction};
+use calamine::{Data, Range};
+use sqlx::{PgPool, Postgres, Transaction};
 use std::str::FromStr;
+use serde_json::json;
+use sqlx::types::Json;
+use crate::structures::custom_errors::CustomError;
+use crate::structures::material::Material;
+use crate::structures::traits::{ExcelPattern};
 
 const REMOVABLE_BP: &str = "БП";
 
@@ -107,3 +112,58 @@ pub async fn truncate_table(table_name: &str, tx: &mut Transaction<'_, Postgres>
 
     Ok(()) // __ Возвращаем "пустой" успех
 }
+
+
+// __ Проверяет на вшивость структуру Excel файла
+pub async fn check_excel_file_structure<T>(
+    range: &Range<Data>,
+    executor: &PgPool,
+) -> anyhow::Result<()>
+where
+    T: ExcelPattern,
+{
+    let mut has_error = false;
+    let mut context = json!({});
+
+    let check_row = T::get_check_row();
+
+    for (col, expected_name) in T::CHECK_PATTERN {
+        if let Some(cell_value) = range.get((check_row, col - 1)) {
+            let actual_name = cell_to_string_by_enum(cell_value);
+
+            if !actual_name.eq(expected_name) {
+                has_error = true;
+                context = json!({
+                    "row": check_row,
+                    "col": col,
+                    "expected": expected_name,
+                    "actual": actual_name,
+                });
+                break;
+            }
+        } else {
+            has_error = true;
+            context = json!({
+                    "row": check_row,
+                    "col": col,
+                    "expected": expected_name,
+                    "actual": "not found",
+                });
+            break;
+        }
+    }
+    if has_error {
+        let error = T::get_error();
+        let mut message = error.get_log_message();
+        message.context = Some(Json(context));
+        message.write(executor).await?;
+        return Err(anyhow::anyhow!(message.message));
+    }
+    Ok(())
+}
+
+
+
+
+
+

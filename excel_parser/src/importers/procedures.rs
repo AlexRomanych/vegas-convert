@@ -1,12 +1,11 @@
-use crate::constants::DATA_SHEET_1C_NAME;
-use crate::helpers::{cell_to_string_by_option, get_formatted_1c_code_string, truncate_table};
+use crate::constants::{DATA_SHEET_1C_NAME, PRODUCTION};
+use crate::helpers::{cell_to_string_by_option, check_excel_file_structure, get_formatted_1c_code_string, truncate_table};
 use crate::structures::procedure::ModelConstructProcedure;
 use anyhow::{Context, Result};
 use calamine::{Reader, Xlsx, open_workbook};
-use sqlx::{Postgres, Transaction};
+use sqlx::{PgPool, Postgres, Transaction};
 use std::collections::HashMap;
 use std::sync::OnceLock;
-use crate::structures::specification::ModelConstruct;
 
 // __ Создаем "ленивое" хранилище
 static KEYS_MATRIX: OnceLock<HashMap<&str, &str>> = OnceLock::new();
@@ -38,7 +37,7 @@ fn get_keys_matrix() -> &'static HashMap<&'static str, &'static str> {
     })
 }
 
-pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
+pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: &PgPool) -> Result<()> {
     // __ Очищает данные и сбрасывает счетчики ID (SERIAL) в начальное состояние
     truncate_table(ModelConstructProcedure::PROCEDURES_TABLE_NAME, tx).await?;
 
@@ -56,6 +55,9 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
             )
         })?;
 
+    // __ Проверяем на правильную структуру отчета
+    check_excel_file_structure::<ModelConstructProcedure>(&range, pool_executor).await?;
+    
     // Предполагаем, что данные на первом листе
     // let range = workbook
     //     .worksheet_range_at(0)
@@ -174,7 +176,7 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
         count += 1;
     }
 
-    println!("✅ Процедуры: импортировано {} строк", count);
+    if !PRODUCTION { println!("✅ Процедуры: импортировано {} строк", count) };
     Ok(())
 }
 

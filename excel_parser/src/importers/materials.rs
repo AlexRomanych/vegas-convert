@@ -1,14 +1,17 @@
 #![allow(unused)]
-use crate::constants::DATA_SHEET_1C_NAME;
-use crate::helpers::{cell_to_string_by_option, get_formatted_1c_code_string, get_formatted_unit_string, truncate_table};
+use crate::checkers::material_checker::check_materials_file_structure;
+use crate::constants::{DATA_SHEET_1C_NAME, PRODUCTION};
+use crate::helpers::{cell_to_string_by_option, check_excel_file_structure, get_formatted_1c_code_string, get_formatted_unit_string, truncate_table};
 use crate::structures::material::Material;
 use anyhow::{Context, Result};
 use calamine::{Reader, Xlsx, open_workbook};
 use serde_json::Value;
-use sqlx::{Postgres, Transaction, types::Json};
+use sqlx::{Postgres, Transaction, types::Json, PgPool};
 use std::collections::HashMap;
+use crate::structures::custom_errors::CustomError;
 
-pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
+
+pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: &PgPool) -> Result<()> {
     // __ Очищает данные и сбрасывает счетчики ID (SERIAL) в начальное состояние
     // truncate_table(Material::MATERIALS_TABLE_NAME, tx).await?;
 
@@ -16,19 +19,19 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
     reset_modify_flag(tx).await?;
 
     // __ Открываем книгу
-    let mut workbook: Xlsx<_> = open_workbook(path)
-        .with_context(|| format!("Не удалось открыть файл процедур: {}", path))?;
+    let mut workbook: Xlsx<_> = open_workbook(path).with_context(|| format!("Не удалось открыть файл процедур: {}", path))?;
 
     // __ Получаем лист
     let range = workbook
         .worksheet_range(DATA_SHEET_1C_NAME)
         .with_context(|| {
             // Добавляем контекст к ошибке, если лист не найден или файл поврежден
-            format!(
-                "Не удалось прочитать лист '{}' в файле 1С",
-                DATA_SHEET_1C_NAME
-            )
+            format!("Не удалось прочитать лист '{}' в файле 1С", DATA_SHEET_1C_NAME)
         })?;
+
+    // __ Проверяем на правильную структуру отчета
+    check_excel_file_structure::<Material>(&range, pool_executor).await?;
+
 
     let mut count = 0;
 
@@ -37,7 +40,10 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
     let mut group_code = String::new();
     let mut category_code = String::new();
 
-    for row in range.rows().skip(Material::DATA_START_ROW - 2) {
+    for row in range
+        .rows()
+        .skip(Material::DATA_START_ROW - 2)
+    {
         // __ Определяем тип записи в ряду + Проверяем, на тот случай, если попали в пустоту
         if !cell_to_string_by_option(row.get(Material::GROUP_CODE_COL - 1)).is_empty() {
             if !item.is_empty() {
@@ -60,7 +66,6 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
             store_item(&mut item, tx, &mut count).await?; // __ Записываем в базу
 
             group_code = item_code; // __ Запоминаем код группы
-
         } else if !cell_to_string_by_option(row.get(Material::CATEGORY_CODE_COL - 1)).is_empty() {
             if !item.is_empty() {
                 // __ Парсим свойства
@@ -98,20 +103,14 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
 
             item.material_group_code_1c = Some(group_code.clone()); // __ Ссылаемся на группу
             item.material_category_code_1c = Some(category_code.clone()); // __ Ссылаемся на категорию
-            item.unit = if item_unit.is_empty() {
-                None
-            } else {
-                Some(item_unit)
-            };
+            item.unit = if item_unit.is_empty() { None } else { Some(item_unit) };
 
             // __ НЕ!!! Записываем в базу, а накапливаем
             // store_item(&item, tx, &mut count).await?;
         } else if !cell_to_string_by_option(row.get(Material::PROPERTY_NAME_COL - 1)).is_empty() {
             properties.insert(
                 cell_to_string_by_option(row.get(Material::PROPERTY_NAME_COL - 1)),
-                Value::String(cell_to_string_by_option(
-                    row.get(Material::PROPERTY_VALUE_COL - 1),
-                )),
+                Value::String(cell_to_string_by_option(row.get(Material::PROPERTY_VALUE_COL - 1))),
             );
         }
     }
@@ -122,7 +121,7 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
         store_item(&mut item, tx, &mut count).await?;
     }
 
-    println!("✅ Материалы: импортировано {} строк", count);
+    if !PRODUCTION { println!("✅ Материалы: импортировано {} строк", count) };
     Ok(())
 }
 
@@ -133,21 +132,13 @@ fn set_properties(material: &mut Material, properties: &mut HashMap<String, Valu
         material.object_name = Some(s.clone());
     }
 
-    material.properties = if properties.is_empty() {
-        None
-    } else {
-        Some(Json(properties.clone()))
-    };
+    material.properties = if properties.is_empty() { None } else { Some(Json(properties.clone())) };
 
     // __ Очищаем накопленные свойства
     properties.clear();
 }
 
-pub async fn store_item(
-    material: &mut Material,
-    tx: &mut Transaction<'_, Postgres>,
-    count: &mut i32,
-) -> Result<()> {
+pub async fn store_item(material: &mut Material, tx: &mut Transaction<'_, Postgres>, count: &mut i32) -> Result<()> {
     // __ Создаем строку запроса динамически
     let query_str = format!(
         r#"
@@ -278,12 +269,11 @@ pub async fn store_item(
 
 /// **Сбрасывает флаг изменения(обновления) записи при обновлении материалов**
 pub async fn reset_modify_flag(tx: &mut Transaction<'_, Postgres>) -> Result<()> {
-    let query = format!(
-        "UPDATE {} SET is_modify = false",
-        Material::MATERIALS_TABLE_NAME
-    );
+    let query = format!("UPDATE {} SET is_modify = false", Material::MATERIALS_TABLE_NAME);
 
-    sqlx::query(&query).execute(&mut **tx).await?;
+    sqlx::query(&query)
+        .execute(&mut **tx)
+        .await?;
 
     Ok(())
 }

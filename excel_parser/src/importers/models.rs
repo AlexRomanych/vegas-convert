@@ -1,20 +1,18 @@
 #![allow(unused)]
-use crate::constants::{
-    DATA_SHEET_1C_NAME, MODEL_COLLECTIONS_TABLE_NAME, MODEL_MANUFACTURE_GROUPS_TABLE_NAME, MODEL_MANUFACTURE_STATUSES_TABLE_NAME,
-    MODEL_MANUFACTURE_TYPES_TABLE_NAME, MODEL_TYPES_TABLE_NAME,
-};
-use crate::helpers::{cell_to_generic, cell_to_string_by_option, get_formatted_1c_code_string};
+use crate::constants::{DATA_SHEET_1C_NAME, MODEL_COLLECTIONS_TABLE_NAME, MODEL_MANUFACTURE_GROUPS_TABLE_NAME, MODEL_MANUFACTURE_STATUSES_TABLE_NAME, MODEL_MANUFACTURE_TYPES_TABLE_NAME, MODEL_TYPES_TABLE_NAME, PRODUCTION};
+use crate::helpers::{cell_to_generic, cell_to_string_by_option, check_excel_file_structure, get_formatted_1c_code_string};
 use crate::structures::model::Model;
 use anyhow::{Context, Result};
 use calamine::{Reader, Xlsx, open_workbook};
 use rust_decimal::Decimal;
-use sqlx::{Postgres, Row, Transaction};
+use sqlx::{PgPool, Postgres, Row, Transaction};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::str::FromStr;
+use crate::structures::material::Material;
 
-pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
+pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: &PgPool) -> Result<()> {
     // __ Очищает данные и сбрасывает счетчики ID (SERIAL) в начальное состояние
     //truncate_table(Material::MATERIALS_TABLE_NAME, tx).await?;
 
@@ -28,6 +26,9 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
             // Добавляем контекст к ошибке, если лист не найден или файл поврежден
             format!("Не удалось прочитать лист '{}' в файле 1С", DATA_SHEET_1C_NAME)
         })?;
+
+    // __ Проверяем на правильную структуру отчета
+    check_excel_file_structure::<Model>(&range, pool_executor).await?;
 
     // __ Список всех данных - Собираем все сюда
     let mut excel_data: HashMap<String, Model> = HashMap::new();
@@ -253,7 +254,7 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
     // println!("Коллекции {:#?} models", collections_map);
     // println!("Коллекции_Бд {:#?} models", collections_map_base);
 
-    println!("✅ Модели: импортировано {} строк", count);
+    if !PRODUCTION { println!("✅ Модели: импортировано {} строк", count) };
     Ok(())
 }
 
@@ -384,11 +385,11 @@ async fn store_item(model: &Model, tx: &mut Transaction<'_, Postgres>) -> Result
         .await;
 
     match result {
-        Ok(res) => {},
+        Ok(res) => {}
         Err(err) => {
             println!("Model: {:#?}", model);
             panic!();
-        },
+        }
     }
 
     // *count += 1;
@@ -471,7 +472,7 @@ where
             "#,
             table_name, pk
         )
-        .into_boxed_str(),
+            .into_boxed_str(),
     );
 
     // __ Цикл обновления

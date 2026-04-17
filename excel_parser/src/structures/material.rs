@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::types::Json;
 use std::collections::HashMap;
+use crate::structures::custom_errors::CustomError;
+use crate::structures::traits::ExcelPattern;
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Material {
@@ -43,6 +45,9 @@ impl Material {
 
     /// **Номер строки начала данных**
     pub const DATA_START_ROW: usize = 7;
+
+    /// **Номер строки с заголовками**
+    pub const DATA_CHECK_ROW: usize = 6;
 
     /// **Номер столбца с кодом из 1С Группы материалов**
     pub const GROUP_CODE_COL: usize = 1;
@@ -100,6 +105,31 @@ impl Material {
         self.supplier = None;
         self.object_name = None;
         self.properties = None;
+    }
+}
+
+// __ Описываем правила для Материала
+impl ExcelPattern for Material {
+    
+    #[rustfmt::skip] // Запрещаем форматеру трогать этот массив
+    const CHECK_PATTERN: &'static [(usize, &'static str)] = &[
+        (Material::GROUP_CODE_COL,      "Родитель.Родитель.Код"),           // **Номер столбца с кодом из 1С Группы материалов**
+        (Material::GROUP_NAME_COL,      "Родитель.Родитель.Наименование"),  // **Номер столбца с названием Группы материалов**
+        (Material::CATEGORY_CODE_COL,   "Родитель.Код"),                    // **Номер столбца с кодом из 1С Категории материалов**
+        (Material::CATEGORY_NAME_COL,   "Родитель.Наименование"),           // **Номер столбца с названием Категории материалов**
+        (Material::MATERIAL_CODE_COL,   "Код"),                             // **Номер столбца с кодом из 1С Материала**
+        (Material::MATERIAL_NAME_COL,   "Наименование"),                    // **Номер столбца с названием Материала**
+        (Material::UNIT_COL,            "Единица измерения"),               // **Номер столбца с Единицей измерения**
+        (Material::PROPERTY_NAME_COL,   "Вид свойства"),                    // **Номер столбца с названием Вида свойства**
+        (Material::PROPERTY_VALUE_COL,  "Значение"),                        // **Номер столбца со значением Вида свойства**
+    ];  
+
+    fn get_check_row() -> usize {
+        Self::DATA_CHECK_ROW - 2
+    }
+    
+    fn get_error() -> CustomError {
+        CustomError::ErrorStructureMaterialsFile
     }
 }
 

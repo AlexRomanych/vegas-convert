@@ -1,10 +1,7 @@
 #![allow(unused)]
 
-use crate::constants::{
-    DATA_SHEET_1C_NAME, MATERIALS_FILE_NAME, MISSING_MATERIALS_CATEGORY_CODE_1C, MISSING_MATERIALS_CATEGORY_NAME, MISSING_MATERIALS_GROUP_CODE_1C,
-    MISSING_MATERIALS_GROUP_NAME,
-};
-use crate::helpers::{cell_to_generic, cell_to_string_by_option, get_formatted_1c_code_string, get_formatted_unit_string, truncate_table};
+use crate::constants::{DATA_SHEET_1C_NAME, MATERIALS_FILE_NAME, MISSING_MATERIALS_CATEGORY_CODE_1C, MISSING_MATERIALS_CATEGORY_NAME, MISSING_MATERIALS_GROUP_CODE_1C, MISSING_MATERIALS_GROUP_NAME, PRODUCTION};
+use crate::helpers::{cell_to_generic, cell_to_string_by_option, check_excel_file_structure, get_formatted_1c_code_string, get_formatted_unit_string, truncate_table};
 use crate::importers::materials;
 use crate::structures::material::Material;
 use crate::structures::model::Model;
@@ -13,11 +10,11 @@ use crate::structures::specification::{MissingMaterial, ModelConstruct, ModelCon
 use anyhow::{Context, Result};
 use calamine::{Reader, Xlsx, open_workbook};
 use rust_decimal::Decimal;
-use sqlx::{Postgres, Row, Transaction};
+use sqlx::{PgPool, Postgres, Row, Transaction};
 use std::collections::HashMap;
 use std::str::FromStr;
 
-pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
+pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: &PgPool) -> Result<()> {
     // __ Очищает данные и сбрасывает счетчики ID (SERIAL) в начальное состояние в таблице спецификаций и их зависимостей
     truncate_table(ModelConstruct::CONSTRUCT_TABLE_NAME, tx).await?;
     truncate_table(ModelConstructItem::CONSTRUCT_ITEM_TABLE_NAME, tx).await?;
@@ -33,6 +30,9 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
             format!("Не удалось прочитать лист '{}' в файле 1С {}", DATA_SHEET_1C_NAME, path)
         })?;
 
+    // __ Проверяем на правильную структуру отчета
+    check_excel_file_structure::<ModelConstruct>(&range, pool_executor).await?;
+    
     let mut count = 0;
 
     // !!! Перед чтением материалов из базы удаляем в Группе и Категории пропущенных
@@ -237,7 +237,7 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str) -> Result<()> {
         update_missing_materials_code_1c(store_material,tx).await?;
     }
 
-    println!("Спецификации: импортировано {count} строк");
+    if !PRODUCTION { println!("✅ Спецификации: импортировано {count} строк") };
 
     Ok(())
 }

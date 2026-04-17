@@ -1,4 +1,5 @@
 unstable_features = true
+version = "Two"
 
 max_width = 150
 
@@ -32,3 +33,9 @@ chain_width = 40
 # А эта опция (только для Nightly) заставляет rustfmt
 # всегда переносить точку на новую строку, если цепочка разбита.
 indent_style = "Block"
+
+
+# Если хочешь, чтобы он объединял простые блоки в одну строку
+control_brace_style = false
+
+

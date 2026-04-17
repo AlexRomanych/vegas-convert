@@ -39,5 +39,7 @@ serde_json = "1.0"
 #stats_alloc = "0.1.10"
 #dhat = "0.3.3"
 
-common_logger = { path = "../common_logger" }
+#common_logger = { path = "../common_logger" }
+logger = { path = "../logger" }
+
 tracing = "0.1"

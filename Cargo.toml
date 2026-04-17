@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "excel_parser",
+    "logger", 
 #    "common_logger",
-    "logger",
 ]
 resolver = "2"
