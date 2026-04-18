@@ -1,14 +1,12 @@
-#![allow(unused)]
-use crate::checkers::material_checker::check_materials_file_structure;
+// #![allow(unused)]
 use crate::constants::{DATA_SHEET_1C_NAME, PRODUCTION};
-use crate::helpers::{cell_to_string_by_option, check_excel_file_structure, get_formatted_1c_code_string, get_formatted_unit_string, truncate_table};
+use crate::helpers::{cell_to_string_by_option, check_excel_file_structure, get_formatted_1c_code_string, get_formatted_unit_string,/* truncate_table*/};
 use crate::structures::material::Material;
 use anyhow::{Context, Result};
 use calamine::{Reader, Xlsx, open_workbook};
 use serde_json::Value;
 use sqlx::{Postgres, Transaction, types::Json, PgPool};
 use std::collections::HashMap;
-use crate::structures::custom_errors::CustomError;
 
 
 pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: &PgPool) -> Result<()> {

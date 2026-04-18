@@ -36,6 +36,6 @@ indent_style = "Block"
 
 
 # Если хочешь, чтобы он объединял простые блоки в одну строку
-control_brace_style = false
+#control_brace_style = false
 
 

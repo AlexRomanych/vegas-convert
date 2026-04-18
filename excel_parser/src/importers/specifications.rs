@@ -1,7 +1,12 @@
-#![allow(unused)]
+// #![allow(unused)]
 
-use crate::constants::{DATA_SHEET_1C_NAME, MATERIALS_FILE_NAME, MISSING_MATERIALS_CATEGORY_CODE_1C, MISSING_MATERIALS_CATEGORY_NAME, MISSING_MATERIALS_GROUP_CODE_1C, MISSING_MATERIALS_GROUP_NAME, PRODUCTION};
-use crate::helpers::{cell_to_generic, cell_to_string_by_option, check_excel_file_structure, get_formatted_1c_code_string, get_formatted_unit_string, truncate_table};
+use crate::constants::{
+    DATA_SHEET_1C_NAME, MISSING_MATERIALS_CATEGORY_CODE_1C, MISSING_MATERIALS_CATEGORY_NAME, MISSING_MATERIALS_GROUP_CODE_1C,
+    MISSING_MATERIALS_GROUP_NAME, PRODUCTION,
+};
+use crate::helpers::{
+    cell_to_generic, cell_to_string_by_option, check_excel_file_structure, get_formatted_1c_code_string, get_formatted_unit_string, truncate_table,
+};
 use crate::importers::materials;
 use crate::structures::material::Material;
 use crate::structures::model::Model;
@@ -32,7 +37,7 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: 
 
     // __ Проверяем на правильную структуру отчета
     check_excel_file_structure::<ModelConstruct>(&range, pool_executor).await?;
-    
+
     let mut count = 0;
 
     // !!! Перед чтением материалов из базы удаляем в Группе и Категории пропущенных
@@ -49,7 +54,7 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: 
 
     // __ Материалы в спецификациях, которых нет в таблице материалов
     let mut missing_materials: HashMap<String, MissingMaterial> = HashMap::new();
-    let find = procedures_base_map.get("000000086");
+    // let find = procedures_base_map.get("000000086");
 
     // __ Условие выхода из цикла
     const EMPTY_COUNT_LIMIT: i32 = 200;
@@ -62,10 +67,10 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: 
         .peekable();
 
     let mut model_code_1c = "".to_string();
-    let mut model_name = "".to_string();
+    let mut model_name;
     let mut specification_name = "".to_string();
     let mut specification_code_1c = "".to_string();
-    let mut active: String;
+    // let mut active: String;
 
     // __ Используем while, чтобы иметь доступ к rows_iter внутри тела
     while let Some(row) = rows_iter.next() {
@@ -150,7 +155,7 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: 
 
             // __ Запоминаем материал, которого нет в таблице материалов
             let mut material_code_1c = Some(item_code_1c.clone());
-            let mut material_unit = if !item_unit.is_empty() { Some(item_unit.clone()) } else { None };
+            let material_unit = if !item_unit.is_empty() { Some(item_unit.clone()) } else { None };
 
             // __ Проверка на существование Материала
             if !materials_base_map.contains_key(&item_code_1c) {
@@ -213,7 +218,7 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: 
 
     // __ Вставляем в БД пропущенные материалы
     for (code_1c, missing_material) in missing_materials {
-        let mut store_material = Material {
+        let store_material = Material {
             // material_group_code_1c: None, // __ Тут именно None
             material_group_code_1c: Some(MISSING_MATERIALS_GROUP_CODE_1C.to_string()),
             material_category_code_1c: Some(MISSING_MATERIALS_CATEGORY_CODE_1C.to_string()),
@@ -234,10 +239,12 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: 
         // __ в строке спецификаций заполняем только material_code_1c_copy, а material_code_1c остается в null.
         // __ Заменяем эти null на коды пропущенных материалов, после того, как мы добавили их в таблицу materials.
 
-        update_missing_materials_code_1c(store_material,tx).await?;
+        update_missing_materials_code_1c(store_material, tx).await?;
     }
 
-    if !PRODUCTION { println!("✅ Спецификации: импортировано {count} строк") };
+    if !PRODUCTION {
+        println!("✅ Спецификации: импортировано {count} строк")
+    };
 
     Ok(())
 }
@@ -261,7 +268,6 @@ async fn update_missing_materials_code_1c(material: Material, tx: &mut Transacti
 
     Ok(())
 }
-
 
 
 // ___ Получаем мапу из первичных ключей (code_1c) для проверки внешних ключей (для согласования ограничений внешнего ключа)
@@ -344,7 +350,8 @@ async fn store_specification_item(specification_item: ModelConstructItem, tx: &m
         ModelConstructItem::CONSTRUCT_ITEM_TABLE_NAME
     );
 
-    let result = sqlx::query(&query_str)
+    /*let result = */
+    sqlx::query(&query_str)
         .bind(&specification_item.construct_code_1c)
         .bind(&specification_item.material_code_1c)
         .bind(&specification_item.material_code_1c_copy)

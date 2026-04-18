@@ -1,11 +1,9 @@
-use anyhow::{Result /*Context*/};
+use anyhow::{Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value; // __ Если ты сам определяешь LogLevel, импорт не нужен, но обычно делают так
 use sqlx::types::Json; // __ Если Json берется из sqlx (для автоматического маппинга в PostgreSQL)
-// use sqlx::{/*Error,*/ Postgres, Transaction};
-use sqlx::postgres::Postgres;
-use sqlx::{PgPool, Transaction};
+use sqlx::{PgPool};
 use std::fmt;
 use std::fmt::Display;
 

@@ -1,4 +1,4 @@
-#![allow(unused)]
+// #![allow(unused)]
 use crate::constants::{DATA_SHEET_1C_NAME, MODEL_COLLECTIONS_TABLE_NAME, MODEL_MANUFACTURE_GROUPS_TABLE_NAME, MODEL_MANUFACTURE_STATUSES_TABLE_NAME, MODEL_MANUFACTURE_TYPES_TABLE_NAME, MODEL_TYPES_TABLE_NAME, PRODUCTION};
 use crate::helpers::{cell_to_generic, cell_to_string_by_option, check_excel_file_structure, get_formatted_1c_code_string};
 use crate::structures::model::Model;
@@ -10,7 +10,6 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::str::FromStr;
-use crate::structures::material::Material;
 
 pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: &PgPool) -> Result<()> {
     // __ Очищает данные и сбрасывает счетчики ID (SERIAL) в начальное состояние
@@ -219,9 +218,12 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: 
     check_entity(tx, models_types_map, MODEL_TYPES_TABLE_NAME).await?; // __ Типы изделий
 
     // __ Только теперь, после всех проверок вставляем в базу
-    for (code_1c, temp_model) in excel_data {
+    for (_, temp_model) in excel_data {
         store_item(&temp_model, tx).await?; // __ Сохраняем в бд
     }
+    // for (code_1c, temp_model) in excel_data {
+    //     store_item(&temp_model, tx).await?; // __ Сохраняем в бд
+    // }
 
     // __ Делаем проверку на то, чтобы существовал элемент чехла (запись) по рекурсивной ссылке cover_code_1c
     // __ Чтение всех Моделей из базы для проверки ключа
@@ -385,8 +387,8 @@ async fn store_item(model: &Model, tx: &mut Transaction<'_, Postgres>) -> Result
         .await;
 
     match result {
-        Ok(res) => {}
-        Err(err) => {
+        Ok(_res) => {}
+        Err(_err) => {
             println!("Model: {:#?}", model);
             panic!();
         }

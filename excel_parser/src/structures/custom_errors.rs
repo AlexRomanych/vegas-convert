@@ -1,4 +1,3 @@
-use serde_json::json;
 use logger::structures::log_message::{LogLevel, LogMessage, LogTarget};
 
 pub enum CustomError {
@@ -10,14 +9,14 @@ pub enum CustomError {
 
 
 impl CustomError {
-    pub fn get_error_code(&self) -> usize {
-        match self {
-            CustomError::ErrorStructureMaterialsFile => 0b0000_0000_0000_0001,
-            CustomError::ErrorStructureProceduresFile => 0b0000_0000_0000_0010,
-            CustomError::ErrorStructureModelsFile => 0b0000_0000_0000_0100,
-            CustomError::ErrorStructureSpecificationsFile => 0b0000_0000_0000_1000,
-        }
-    }
+    // pub fn get_error_code(&self) -> usize {
+    //     match self {
+    //         CustomError::ErrorStructureMaterialsFile => 0b0000_0000_0000_0001,
+    //         CustomError::ErrorStructureProceduresFile => 0b0000_0000_0000_0010,
+    //         CustomError::ErrorStructureModelsFile => 0b0000_0000_0000_0100,
+    //         CustomError::ErrorStructureSpecificationsFile => 0b0000_0000_0000_1000,
+    //     }
+    // }
 
     pub fn get_log_message(&self) -> LogMessage {
         match self {

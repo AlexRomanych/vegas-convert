@@ -41,7 +41,7 @@ pub struct ModelConstructItem {
 }
 
 // __ Пропущенный материал при заполнении спецификаций
-#[derive(Debug)]
+// #[derive(Debug)]
 pub struct MissingMaterial {
     pub code_1c: String,
     pub name_1c: String,
