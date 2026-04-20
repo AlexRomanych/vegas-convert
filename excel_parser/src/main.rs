@@ -88,8 +88,12 @@ async fn main() -> Result<()> {
     };
 
     importers::procedures::run(&mut tx, &path_str, &pool)
-        .await
-        .context("Ошибка при импорте процедур")?;
+        .await?;
+
+    // importers::procedures::run(&mut tx, &path_str, &pool)
+    //     .await
+    //     .context("Ошибка при импорте процедур")?;
+
 
     // __ Материалы
     let file_path = PathBuf::from(IMPORT_PATH).join(MATERIALS_FILE_NAME); // push — это аналог join, который меняет путь на месте
@@ -105,8 +109,11 @@ async fn main() -> Result<()> {
     };
 
     importers::materials::run(&mut tx, &path_str, &pool)
-        .await
-        .context("Ошибка при импорте материалов")?;
+        .await?;
+
+    // importers::materials::run(&mut tx, &path_str, &pool)
+    //     .await
+    //     .context("Ошибка при импорте материалов")?;
 
     // __ Модели
     let file_path = PathBuf::from(IMPORT_PATH).join(MODELS_FILE_NAME);
@@ -122,8 +129,11 @@ async fn main() -> Result<()> {
     };
 
     importers::models::run(&mut tx, &path_str, &pool)
-        .await
-        .context("Ошибка при импорте моделей")?;
+        .await?;
+
+    // importers::models::run(&mut tx, &path_str, &pool)
+    //     .await
+    //     .context("Ошибка при импорте моделей")?;
 
     // __ Спецификации
     let file_path = PathBuf::from(IMPORT_PATH).join(SPECIFICATIONS_FILE_NAME);
@@ -139,8 +149,11 @@ async fn main() -> Result<()> {
     };
 
     importers::specifications::run(&mut tx, &path_str, &pool)
-        .await
-        .context("Ошибка при импорте спецификаций")?;
+        .await?;
+
+    // importers::specifications::run(&mut tx, &path_str, &pool)
+    //     .await
+    //     .context("Ошибка при импорте спецификаций")?;
 
 
     // __ Фиксация изменений
