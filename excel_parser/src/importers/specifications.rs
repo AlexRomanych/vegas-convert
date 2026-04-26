@@ -160,7 +160,7 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: 
             // __ Проверка на существование Материала
             if !materials_base_map.contains_key(&item_code_1c) {
                 let missing_material = MissingMaterial {
-                    code_1c: item_code_1c.clone(),
+                    // code_1c: item_code_1c.clone(),
                     name_1c: item_name.clone(),
                     unit:    material_unit.clone(),
                 };

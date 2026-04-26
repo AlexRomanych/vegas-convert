@@ -2,6 +2,8 @@
   <dictionary name="project">
     <words>
       <w>lamit</w>
+      <w>lpar</w>
+      <w>rpar</w>
       <w>translit</w>
       <w>transliterit</w>
       <w>мапе</w>
@@ -12,6 +14,7 @@
       <w>парсера</w>
       <w>парсим</w>
       <w>распарсить</w>
+      <w>регулярку</w>
       <w>транслитерит</w>
     </words>
   </dictionary>

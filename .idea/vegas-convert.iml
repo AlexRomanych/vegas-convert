@@ -5,6 +5,7 @@
       <sourceFolder url="file://$MODULE_DIR$/common_logger/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/excel_parser/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/logger/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/interpreter/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/excel_parser/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>

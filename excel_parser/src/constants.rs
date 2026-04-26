@@ -11,8 +11,8 @@ pub const CODE_1C_LENGTH: usize = 9;
 
 
 /// **Путь к отчетам**
-// pub const IMPORT_PATH: &str = "storage/app/1c_imports/";
-pub const IMPORT_PATH: &str = "../storage/app/1c_imports/";
+pub const IMPORT_PATH: &str = "storage/app/1c_imports/";
+// pub const IMPORT_PATH: &str = "../storage/app/1c_imports/";
 
 /// **Название файла Excel с материалами**
 pub const MATERIALS_FILE_NAME: &'static str = "materials.xlsx";

@@ -1,7 +1,13 @@
 [workspace]
 members = [
     "excel_parser",
+    "interpreter",
     "logger", 
 #    "common_logger",
 ]
 resolver = "2"
+
+#[workspace.metadata.scripts] # Или просто используй флаг в [package] если это корневой проект
+# Но стандартный способ для воркспейса:
+
+default-members = ["interpreter"]

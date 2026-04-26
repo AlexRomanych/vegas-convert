@@ -50,11 +50,11 @@ impl Material {
     /// **Стоп-слово окончания отчета ("Итого")**
     pub const STOP_WORD: &'static str = "Итого";
 
-    /// **Номер строки начала данных**
-    pub const DATA_START_ROW: usize = 7;
-
     /// **Номер строки с заголовками**
     pub const DATA_CHECK_ROW: usize = 6;
+
+    /// **Номер строки начала данных**
+    pub const DATA_START_ROW: usize = 7;
 
     /// **Номер столбца с кодом из 1С Группы материалов**
     pub const GROUP_CODE_COL: usize = 1;
@@ -77,11 +77,14 @@ impl Material {
     /// **Номер столбца с Единицей измерения**
     pub const UNIT_COL: usize = 11;
 
+    /// **Номер столбца с Кодом Названия Вида свойства**
+    pub const PROPERTY_NAME_CODE_COL: usize = 12;
+
     /// **Номер столбца с названием Вида свойства**
-    pub const PROPERTY_NAME_COL: usize = 14;
+    pub const PROPERTY_NAME_COL: usize = 13;
 
     /// **Номер столбца со значением Вида свойства**
-    pub const PROPERTY_VALUE_COL: usize = 15;
+    pub const PROPERTY_VALUE_COL: usize = 14;
 
     /// **Конструктор**
     pub fn new(code_1c: String, name: String) -> Self {
