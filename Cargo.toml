@@ -1,8 +1,11 @@
 [workspace]
 members = [
+    "constants",
+    "database",
     "excel_parser",
     "interpreter",
-    "logger", 
+    "logger",
+    "orders",
 #    "common_logger",
 ]
 resolver = "2"

@@ -1,5 +1,11 @@
 #![allow(unused)]
 
+mod helpers;
+
+use anyhow::{Context, Result};
+use helpers::maps::*;
+use orders::{get_order_data_tree, get_order_with_lines};
+use orders::structures::parsed_tree::OrderProcessRow;
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -20,8 +26,8 @@ impl Default for TokenType {
 
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)] // Эти 4 макроса обязательны
-enum TokenType {
-    UNDEFINED,
+pub enum TokenType {
+    UNDEFINED, // пока не используем
     NUMBER,
     VARIABLE,
     SEMICOLON,
@@ -46,7 +52,7 @@ enum TokenType {
     PROPERTY,
     RETURN,
     OPERATOR, // Оператор, типа Окр, Цел и тд
-    KEYWORD,  // Ключевое слово
+    KEYWORD,  // Ключевое слово, пока не используем
     IF,
     ELSE,
     ELSEIF,
@@ -93,10 +99,16 @@ pub enum ExpressionNode {
     },
 }
 
-
-fn main() {
+#[tokio::main]
+async fn main() -> Result<()> {
     // __ Статистические измерения
     let start_time = Instant::now();
+
+    get_data(820i64).await?;
+
+    println!("Time elapsed: {:?}", start_time.elapsed());
+
+    return Ok(());
 
     // for i in (0..=4500) {
 
@@ -134,19 +146,17 @@ fn main() {
 
         if let Some(token) = get_token(code_text) {
             let mut next_token = token;
-
             next_token.pos = pos;
-
             pos += next_token.text.len();
-
             // println!("Token: {:?}", next_token);
-
             tokens.push(next_token);
         } else {
+            // TODO: Сделать обработку ошибок
             panic!("Error at position {}\n Code:\n {}", pos, &code_text[pos..]);
         }
     }
 
+    // __ Убираем пробелы
     tokens.retain(|token| token.token_type != TokenType::SPACE);
     // tokens.retain(|token| token.token_type == TokenType::UNDEFINED);
 
@@ -175,8 +185,7 @@ fn main() {
 pub struct Parser {
     tokens: Vec<Token>,
     pos:    usize,
-    // Scope хранит значения переменных (аналог твоего this.scope)
-    scope:  HashMap<String, f64>,
+    scope:  HashMap<String, f64>, // __ Scope хранит значения переменных
 }
 
 impl Parser {
@@ -188,7 +197,7 @@ impl Parser {
         }
     }
 
-    // Вспомогательные методы
+    // __ Вспомогательные методы
     fn match_token(&mut self, types: &[TokenType]) -> Option<Token> {
         if self.pos < self.tokens.len() {
             let current_token = &self.tokens[self.pos];
@@ -207,8 +216,7 @@ impl Parser {
         }
     }
 
-    // --- Методы парсинга ---
-
+    // __ --- Методы парсинга ---
     pub fn parse_code(&mut self) -> ExpressionNode {
         let mut statements = Vec::new();
         while self.pos < self.tokens.len() {
@@ -220,7 +228,10 @@ impl Parser {
 
     fn parse_expression(&mut self) -> ExpressionNode {
         // Проверяем на "Если"
-        if self.match_token(&[TokenType::IF]).is_some() {
+        if self
+            .match_token(&[TokenType::IF])
+            .is_some()
+        {
             return self.parse_if();
         }
 
@@ -309,31 +320,29 @@ impl Parser {
         let condition = self.parse_formula();
         self.require(&[TokenType::THEN]); // Ожидаем "Тогда"
 
-        let body = self.parse_block_until(&[
-            TokenType::ELSEIF,
-            TokenType::ELSE,
-            TokenType::ENDIF
-        ]);
+        let body = self.parse_block_until(&[TokenType::ELSEIF, TokenType::ELSE, TokenType::ENDIF]);
 
         branches.push(IfBranch { condition, body });
 
         // 2. Цикл по всем "ИначеЕсли"
-        while self.match_token(&[TokenType::ELSEIF]).is_some() {
+        while self
+            .match_token(&[TokenType::ELSEIF])
+            .is_some()
+        {
             let ei_condition = self.parse_formula();
             self.require(&[TokenType::THEN]);
-            let ei_body = self.parse_block_until(&[
-                TokenType::ELSEIF,
-                TokenType::ELSE,
-                TokenType::ENDIF
-            ]);
+            let ei_body = self.parse_block_until(&[TokenType::ELSEIF, TokenType::ELSE, TokenType::ENDIF]);
             branches.push(IfBranch {
                 condition: ei_condition,
-                body: ei_body
+                body:      ei_body,
             });
         }
 
         // 3. Обрабатываем "Иначе", если оно есть
-        if self.match_token(&[TokenType::ELSE]).is_some() {
+        if self
+            .match_token(&[TokenType::ELSE])
+            .is_some()
+        {
             else_body = Some(self.parse_block_until(&[TokenType::ENDIF]));
         }
 
@@ -360,7 +369,6 @@ impl Parser {
 
         statements
     }
-
 
 
     // --- Интерпретатор (Метод run) ---
@@ -550,84 +558,19 @@ fn get_code_string() -> String {
 }
 
 
-// __ Карта токенов
-static TOKEN_MAP: OnceLock<Vec<(TokenType, Regex)>> = OnceLock::new();
-// static TOKEN_MAP: OnceLock<HashMap<TokenType, &str>> = OnceLock::new();
-fn get_token_map() -> &'static Vec<(TokenType, Regex)> {
-    TOKEN_MAP.get_or_init(|| {
-        vec![
-            // !!! Тут важен порядок
-            // 1. Parameter: [Объект].{Параметр}
-            // Самый длинный и специфичный — первым
-            (TokenType::PARAMETER, Regex::new(r"^\[[^]]+\]\.\{[^}]+\}").unwrap()),
-            // 2. Property: [Объект].[Свойство]
-            // Средний по сложности
-            (TokenType::PROPERTY, Regex::new(r"^\[[^]]+\]\.\[[^]]+\]").unwrap()),
-            // 3. Return: [Объект]
-            // Самый короткий — последним из этой группы
-            (TokenType::RETURN, Regex::new(r"^\[[^]]+\]").unwrap()),
-            // !!! End block
+async fn get_data(order_id: i64) -> Result<Vec<OrderProcessRow>> {
+    let pool = database::connect()
+        .await
+        .context("Ошибка соединения с БД")?;
 
-            (TokenType::SEMICOLON, Regex::new("^;").unwrap()),
-            (TokenType::COMMA, Regex::new(r"^,").unwrap()),
-            (TokenType::SPACE, Regex::new(r"^\s+").unwrap()),
-            (TokenType::ASSIGN, Regex::new("^=").unwrap()),
-            (TokenType::PLUS, Regex::new(r"^\+").unwrap()),
-            (TokenType::MINUS, Regex::new(r"^-").unwrap()),
-            (TokenType::AND, Regex::new(r"(?i)^(и|and)\b").unwrap()),
-            (TokenType::OR, Regex::new(r"(?i)^(или|or)\b").unwrap()),
-            (TokenType::NOT, Regex::new(r"(?i)^(не|not)\b").unwrap()),
-            // !!! Тут важен порядок
-            (TokenType::GE, Regex::new(r"^>=").unwrap()), // Больше или равно
-            (TokenType::LE, Regex::new(r"^<=").unwrap()), // Меньше или равно
-            (TokenType::GT, Regex::new(r"^>").unwrap()),  // Больше
-            (TokenType::LT, Regex::new(r"^<").unwrap()),  // Меньше
-            (TokenType::NE, Regex::new(r"^<>").unwrap()), // Не равно (в стиле 1С/SQL)
-            // !!! End block
-            (TokenType::STAR, Regex::new(r"^\*").unwrap()), // Для умножения
-            (TokenType::SLASH, Regex::new(r"^/").unwrap()), // Для деления
-            (TokenType::LPAR, Regex::new(r"^\(").unwrap()), // Левая скобка (
-            (TokenType::RPAR, Regex::new(r"^\)").unwrap()), // Правая скобка )
-            // Если / If
-            (TokenType::IF, Regex::new(r"(?i)^(если|if)\b").unwrap()),
-            // ИначеЕсли / ElseIf
-            (TokenType::ELSEIF, Regex::new(r"(?i)^(иначеесли|elseif)\b").unwrap()),
-            // Иначе / Else
-            (TokenType::ELSE, Regex::new(r"(?i)^(иначе|else)\b").unwrap()),
-            // КонецЕсли / EndIf
-            (TokenType::ENDIF, Regex::new(r"(?i)^(конецесли|endif)\b").unwrap()),
-            // Тогда / Then
-            (TokenType::THEN, Regex::new(r"(?i)^(тогда|then)\b").unwrap()),
+    let order_tree = get_order_data_tree(&pool, order_id)
+        .await
+        .context("Ошибка получения Заявки")?;
 
-            // !!! Оставляем переменную в самом конце
-            (TokenType::NUMBER, Regex::new(r"^[0-9]+([.,][0-9]+)?").unwrap()),
-            (TokenType::VARIABLE, Regex::new(r"(?i)^[а-яёa-z_][а-яёa-z0-9_]*").unwrap()),
-            // (TokenType::VARIABLE, Regex::new(r"^[а-яА-Яa-zA-Z_][а-яА-Яa-zA-Z0-9_]*").unwrap()),
-            // (TokenType::VARIABLE, Regex::new(r"^[а-яА-Я_]+").unwrap()),
-        ]
-    })
-}
+    // let order = get_order_with_lines(&pool, 820i64).await.context("Ошибка получения Заявки")?;
+    // println!("pool: {:#?}", pool);
+    // println!("Order: {:#?}", order);
+    // println!("Order: {:#?}", order_tree);
 
-
-// __ Ключевые слова (Если, Тогда, Иначе)
-static KEYWORDS: OnceLock<HashMap<&str, &str>> = OnceLock::new();
-fn get_keywords() -> &'static HashMap<&'static str, &'static str> {
-    KEYWORDS.get_or_init(|| {
-        HashMap::from([
-            // ("если", "if"),
-            // ("иначеесли", "Else If"),
-            // ("иначе", "Else"),
-            // ("конецесли", "End If"),
-            // ("тогда", "Then"),
-            // ("не", "Not"),
-            // ("или", "Or"),
-            // ("и", "And"),
-        ])
-    })
-}
-
-// __ Операторы (Цел, Окр)
-static OPERATORS: OnceLock<HashMap<&str, &str>> = OnceLock::new();
-fn get_operators() -> &'static HashMap<&'static str, &'static str> {
-    OPERATORS.get_or_init(|| HashMap::from([("цел", "Fix"), ("окр", "Round")]))
+    Ok(order_tree)
 }

@@ -13,8 +13,8 @@ calamine = "0.34.0"
 
 # Исправленный блок sqlx
 sqlx = { version = "0.8", features = [
-    "runtime-tokio",   # Указываем рантайм
-    "tls-rustls",      # Указываем библиотеку TLS отдельно
+    "runtime-tokio", # Указываем рантайм
+    "tls-rustls", # Указываем библиотеку TLS отдельно
     "postgres",
     "chrono",
     "macros",
