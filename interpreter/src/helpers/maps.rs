@@ -40,6 +40,17 @@ pub fn get_token_map() -> &'static Vec<(TokenType, Regex)> {
             (TokenType::SLASH, Regex::new(r"^/").unwrap()), // Для деления "/"
             (TokenType::LPAR, Regex::new(r"^\(").unwrap()), // Левая скобка "("
             (TokenType::RPAR, Regex::new(r"^\)").unwrap()), // Правая скобка ")"
+
+            (TokenType::FIX, Regex::new(r"(?i)^(цел)\b").unwrap()),
+            (TokenType::ROUND, Regex::new(r"(?i)^(окр)\b").unwrap()),
+            (TokenType::ALARM, Regex::new(r"(?i)^(предупреждение)\b").unwrap()),
+            (TokenType::MISSING, Regex::new(r"(?i)^(ЗначениеЗаполнено)\b").unwrap()),
+
+            // Строка: "Не задано количество слоев клея"
+            (TokenType::STRING, Regex::new(r#"^"([^"]*)""#).unwrap()),
+
+
+
             // Если / If
             (TokenType::IF, Regex::new(r"(?i)^(если|if)\b").unwrap()),
             // ИначеЕсли / ElseIf

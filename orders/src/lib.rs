@@ -1,9 +1,9 @@
 use crate::structures::order::Order;
 use crate::structures::order_line::OrderLine;
-use constants::{ORDERS_TABLE_NAME, ORDER_LINES_TABLE_NAME};
-use std::sync::OnceLock;
-use anyhow::{ Result, Context};
 use crate::structures::parsed_tree::OrderProcessRow;
+use anyhow::{Context, Result};
+use constants::{ORDER_LINES_TABLE_NAME, ORDERS_TABLE_NAME};
+use std::sync::OnceLock;
 // use sqlx::{PgPool, Postgres, Transaction};
 
 pub mod structures;
@@ -14,21 +14,21 @@ static SQL_QUERY_ORDER_LINES: OnceLock<String> = OnceLock::new();
 
 // __ Получаем Заявку с содержимым (строками)
 pub async fn get_order_with_lines(pool: &sqlx::PgPool, order_id: i64) -> Result<Order> {
-
     // __ Получаем строку из OnceLock. Если там пусто — инициализируем.
-    let query = SQL_QUERY_ORDERS.get_or_init(|| {
-        format!(r#"SELECT id FROM {} WHERE id = $1"#, ORDERS_TABLE_NAME)
-    });
+    let query = SQL_QUERY_ORDERS.get_or_init(|| format!(r#"SELECT id FROM {} WHERE id = $1"#, ORDERS_TABLE_NAME));
 
     // __ 1. Получаем сам заказ
     let mut order: Order = sqlx::query_as(query.as_str())
         .bind(order_id)
         .fetch_one(pool)
         .await?;
-        // .context("Ошибка Заказа")?;
+    // .context("Ошибка Заказа")?;
 
     let query = SQL_QUERY_ORDER_LINES.get_or_init(|| {
-        format!(r#"SELECT id, model_code_1c, size, width, length, height, amount FROM {} WHERE order_id = $1"#, ORDER_LINES_TABLE_NAME)
+        format!(
+            r#"SELECT id, model_code_1c, size, width, length, height, amount FROM {} WHERE order_id = $1"#,
+            ORDER_LINES_TABLE_NAME
+        )
     });
 
     // __ 2. Получаем все строки этого заказа
@@ -45,10 +45,16 @@ pub async fn get_order_with_lines(pool: &sqlx::PgPool, order_id: i64) -> Result<
 }
 
 
-// __ Получаем структуру для парсинга заявки на материалы
-pub async fn get_order_data_tree(pool: &sqlx::PgPool, order_id: i64) -> Result<Vec<OrderProcessRow>> {
+// __ Получаем структуру для парсинга заявки на материалы без подключения к БД
+pub async fn get_order_data_tree(order_id: i64) -> Result<Vec<OrderProcessRow>> {
+    let pool = database::connect().await?;
+    get_order_data_tree_pool(&pool, order_id).await
+}
+
+// __ Получаем структуру для парсинга заявки на материалы + подключение к БД
+pub async fn get_order_data_tree_pool(pool: &sqlx::PgPool, order_id: i64) -> Result<Vec<OrderProcessRow>> {
     let rows = sqlx::query_as::<_, OrderProcessRow>(
-    r#"
+        r#"
             SELECT 
                 -- o.id AS order_id, 
                 ol.id AS line_id,
@@ -67,10 +73,10 @@ pub async fn get_order_data_tree(pool: &sqlx::PgPool, order_id: i64) -> Result<V
                         -- 'construct_name', mc.model_name,
                         'items', (
                             SELECT JSON_AGG(JSON_BUILD_OBJECT(
-                                'm_c', mci.material_code_1c,
-                                -- 'material', mci.material_name,
-                                'p_c', mci.procedure_code_1c,
-                                -- 'proc', mci.procedure_name,
+                                'mc', mci.material_code_1c,
+                                 -- 'material', mci.material_name,
+                                'pc', mci.procedure_code_1c,
+                                'pn', mci.procedure_name,
                                 'h', mci.detail_height,
                                 'a', mci.amount
                             ))
@@ -89,10 +95,10 @@ pub async fn get_order_data_tree(pool: &sqlx::PgPool, order_id: i64) -> Result<V
                         -- 'construct_name', mcc.model_name,
                         'items', (
                             SELECT JSON_AGG(JSON_BUILD_OBJECT(
-                                'm_c', mcic.material_code_1c,
+                                'mc', mcic.material_code_1c,
                                 -- 'material', mcic.material_name,
-                                'p_c', mcic.procedure_code_1c,
-                                -- 'proc', mcic.procedure_name,
+                                'pc', mcic.procedure_code_1c,
+                                'pn', mcic.procedure_name,
                                 'h', mcic.detail_height,
                                 'a', mcic.amount
                             ))
@@ -110,14 +116,11 @@ pub async fn get_order_data_tree(pool: &sqlx::PgPool, order_id: i64) -> Result<V
             JOIN models m ON m.code_1c = ol.model_code_1c
             WHERE o.id = $1
             ORDER BY ol.id;
-        "#
+        "#,
     )
-        .bind(order_id)
-        .fetch_all(pool)
-        .await?;
+    .bind(order_id)
+    .fetch_all(pool)
+    .await?;
 
     Ok(rows)
-
-
 }
-

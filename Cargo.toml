@@ -5,7 +5,7 @@ members = [
     "excel_parser",
     "interpreter",
     "logger",
-    "orders",
+    "orders", "procedures",
 #    "common_logger",
 ]
 resolver = "2"

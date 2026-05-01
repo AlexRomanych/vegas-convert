@@ -4,10 +4,13 @@ mod helpers;
 
 use anyhow::{Context, Result};
 use helpers::maps::*;
-use orders::{get_order_data_tree, get_order_with_lines};
 use orders::structures::parsed_tree::OrderProcessRow;
+use orders::{get_order_data_tree, get_order_data_tree_pool, get_order_with_lines};
+use procedures::structures::procedure::Procedure;
+use procedures::{get_procedures, get_procedures_by_list_code_1c};
 use regex::Regex;
 use std::collections::HashMap;
+use std::env;
 use std::sync::OnceLock;
 use std::time::Instant;
 
@@ -48,16 +51,22 @@ pub enum TokenType {
     SLASH,
     LPAR,
     RPAR,
-    PARAMETER,
-    PROPERTY,
-    RETURN,
-    OPERATOR, // Оператор, типа Окр, Цел и тд
-    KEYWORD,  // Ключевое слово, пока не используем
+    PARAMETER, // Входные параметры, например, [Матрас].[Ширина] или [Матрас].[Длина]. Будем засовывать в Scope
+    PROPERTY,  // Входные свойства, например, [НастилМатериалы].{Плотность} или [ПолотнаСтеганные].{РабочаяШирина}. Будем засовывать в Scope
+    RETURN,    // Итоговое возвращаемое значение процедуры: [БлокПружинный] и [БлокПружинныйОтход]
+    OUTPUT,    // Выходные параметры, например, [БлокПружинный].[Ширина], [БлокПружинный].[Длина], [БлокПружинный].[Высота]
+    OPERATOR,  // Оператор, типа Окр, Цел и тд
+    KEYWORD,   // Ключевое слово, пока не используем
     IF,
     ELSE,
     ELSEIF,
     ENDIF,
     THEN,
+    FIX,     // Цел
+    ROUND,   // Окр
+    ALARM,   // Предупреждение
+    MISSING, // ЗначениеЗаполнено
+    STRING,  // "Не задано количество слоев клея"
 }
 
 
@@ -99,20 +108,88 @@ pub enum ExpressionNode {
     },
 }
 
+#[derive(Debug, Clone)]
+pub struct ParsedProcedure {
+    procedure:      Procedure,
+    tokens:         Vec<Token>,
+    has_properties: bool, // __ Есть ли свойства: [НастилМатериалы].{Плотность}
+    has_parameters: bool, // __ Есть ли параметры: Ширина = [Матрас].[Ширина]
+}
+
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // __ Статистические измерения
     let start_time = Instant::now();
 
-    get_data(820i64).await?;
+    // __ Получаем входной параметр
+    // args() возвращает итератор. Первый элемент (индекс 0) — это всегда путь к самой программе.
+    // let args: Vec<String> = env::args().collect();
+    //
+    // if args.len() > 1 {
+    //     let first_param = &args[1];
+    //     println!("Получен параметр: {}", first_param);
+    // } else {
+    //     println!("Параметры не переданы");
+    // }
 
-    println!("Time elapsed: {:?}", start_time.elapsed());
 
-    return Ok(());
+    // __ Получаем структуру для парсинга
+    let orders = get_data(820_i64).await?;
+
+    // __ Собираем уникальные процедуры
+    let mut procedures_unique: HashMap<String, String> = HashMap::new();
+
+    for order in orders {
+        if let Some(base_vec) = &order.base {
+            for base in base_vec.iter() {
+                if let Some(items) = &base.items {
+                    for item in items.iter() {
+                        if let Some(procedure_code) = &item.pc {
+                            procedures_unique.insert(procedure_code.clone(), (*item).clone().pn.unwrap());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // __ Получаем процедуры с сервера
+    // let procedures = get_procedures_by_list_code_1c(&procedures_unique).await?;     // из списка
+
+    let procedures = get_procedures().await?; // все
+    println!("{}", procedures.len());
+    // println!("{:#?}", procedures_unique);
+    // println!("{:#?}", procedures_unique.len());
+    // println!("{:#?}", procedures);
+
+
+    // println!("Time elapsed: {:?}", start_time.elapsed());
+    //
+    // return Ok(());
 
     // for i in (0..=4500) {
 
+    // __ Подготавливаем карты
+    get_token_map();
+    get_keywords();
+    get_operators();
 
+    let mut prepare_procedures = HashMap::<String, ParsedProcedure>::new();
+    let mut max_tokens = 0;
+
+    let mut unique_parameters: HashMap<String, Token> = HashMap::new();
+    let mut unique_properties: HashMap<String, Token> = HashMap::new();
+    let mut unique_returns: HashMap<String, Token> = HashMap::new();
+
+    // for procedure in procedures {
+    //     if procedure.text.is_none() {
+    //         continue;
+    //     }
+    //
+    //     let code_source = procedure.text.as_ref().unwrap();
+
+    let procedure = Procedure::default();
     let code_source = get_code_string();
 
     // __ Подготавливаем код
@@ -129,17 +206,13 @@ async fn main() -> Result<()> {
         .collect::<Vec<_>>()
         .join("\n");
 
-    println!("Code: {}", code_erased);
-
+    // println!("Code: {}", code_erased);
     // let code: Vec<char> = code_erased.chars().collect();
 
-    // __ Подготавливаем карты
-    get_token_map();
-    get_keywords();
-    get_operators();
-
-    let mut tokens: Vec<Token> = Vec::new();
+    let mut tokens: Vec<Token> = Vec::with_capacity(1500);
     let mut pos: usize = 0;
+    let mut has_properties = false;
+    let mut has_parameters = false;
 
     while pos < code_erased.len() {
         let code_text = &code_erased[pos..];
@@ -148,8 +221,30 @@ async fn main() -> Result<()> {
             let mut next_token = token;
             next_token.pos = pos;
             pos += next_token.text.len();
+
             // println!("Token: {:?}", next_token);
-            tokens.push(next_token);
+
+            // __ Проверяем на свойства
+            if TokenType::PROPERTY == next_token.token_type {
+                has_properties = true;
+                unique_properties.insert(next_token.text.clone(), next_token.clone()); // Собираем уникальные свойства
+            }
+
+            // __ Проверяем на параметры
+            if TokenType::PARAMETER == next_token.token_type {
+                has_parameters = true;
+                unique_parameters.insert(next_token.text.clone(), next_token.clone()); // Собираем уникальные аргументы
+            }
+
+            // __ Проверяем на выходные значения
+            if TokenType::RETURN == next_token.token_type {
+                unique_returns.insert(next_token.text.clone(), next_token.clone()); // Собираем уникальные аргументы
+            }
+
+            // __ Убираем пробелы
+            if TokenType::SPACE != next_token.token_type {
+                tokens.push(next_token);
+            }
         } else {
             // TODO: Сделать обработку ошибок
             panic!("Error at position {}\n Code:\n {}", pos, &code_text[pos..]);
@@ -157,27 +252,55 @@ async fn main() -> Result<()> {
     }
 
     // __ Убираем пробелы
-    tokens.retain(|token| token.token_type != TokenType::SPACE);
+    // tokens.retain(|token| token.token_type != TokenType::SPACE);
     // tokens.retain(|token| token.token_type == TokenType::UNDEFINED);
 
-    println!("Tokens: {tokens:#?}");
+    // println!("Tokens: {tokens:#?}");
 
-    let mut parser = Parser::new(tokens);
-    let expressions_node = parser.parse_code();
+    if tokens.len() > max_tokens {
+        max_tokens = tokens.len();
+        // println!("{}", procedure.code_1c);
+    }
 
-    println!("{:#?}", expressions_node);
 
-    parser.run(&expressions_node);
+    // println!("{}", procedure.code_1c);
 
-    println!("scope: {:#?}", parser.scope);
+    let parsed_procedure = ParsedProcedure {
+        procedure: procedure.clone(),
+        tokens,
+        has_properties,
+        has_parameters,
+    };
+    prepare_procedures.insert(procedure.code_1c, parsed_procedure); // !!!
 
+    // let mut parser = Parser::new(tokens);
+    // let expressions_node = parser.parse_code();
+    //
+    // println!("{:#?}", expressions_node);
+    //
+    // parser.run(&expressions_node);
+    //
+    // println!("scope: {:#?}", parser.scope);
+    // } // !!!
+
+
+    // println!("parsed_procedure: {:#?}", parsed_procedure);
     // println!("parser: {:#?}", parser);
 
     // }
+
+    // println!("{:#?}", unique_parameters.iter().for_each(|(text, token)| println!("{:?}", text) ));
+    // println!("{:#?}", unique_properties.iter().for_each(|(text, token)| println!("{:?}", text) ));
+    // println!("{:#?}", unique_returns.iter().for_each(|(text, token)| println!("{:?}", text) ));
+
+    println!("max_tokens: {}", max_tokens);
+
     // __ Статистика по времени
     let duration = start_time.elapsed();
     println!("Время выполнения: {:?}", duration);
     println!("Прошло миллисекунд: {}", duration.as_millis());
+
+    Ok(())
 }
 
 
@@ -449,32 +572,43 @@ impl Parser {
 fn get_token(code: &str) -> Option<Token> {
     if let Some(map) = TOKEN_MAP.get() {
         for (token_type, regexp) in map {
-            //
             if let Some(text) = regexp.find(code) {
+                // __ Regexp находит строку в кавычках, но выделяет текст без кавычек, добавляем их для сохранения длины
+                let find_text = match token_type {
+                    TokenType::STRING => {
+                        let mut temp_str = r#"""#.to_string();
+                        temp_str.push_str(text.as_str());
+                        temp_str.push_str(r#"""#);
+                        temp_str
+                    },
+                    _ => String::from(text.as_str()),
+                };
+
                 let mut find_token = Token {
                     token_type: *token_type,
                     pos:        0, // Записываем в вызывающей функции
-                    text:       String::from(text.as_str()),
+                    text:       find_text,
+                    // text:       String::from(text.as_str()),
                 };
 
 
-                if let Some(keywords) = KEYWORDS.get() {
-                    // __ Проверяем, на ключевое слово
-                    if keywords
-                        .get(find_token.text.to_lowercase().as_str())
-                        .is_some()
-                    {
-                        find_token.token_type = TokenType::KEYWORD;
-                    } else if let Some(operators) = OPERATORS.get() {
-                        // __ Проверяем, на оператор
-                        if operators
-                            .get(find_token.text.to_lowercase().as_str())
-                            .is_some()
-                        {
-                            find_token.token_type = TokenType::OPERATOR;
-                        }
-                    }
-                }
+                // if let Some(keywords) = KEYWORDS.get() {
+                //     // __ Проверяем, на ключевое слово
+                //     if keywords
+                //         .get(find_token.text.to_lowercase().as_str())
+                //         .is_some()
+                //     {
+                //         find_token.token_type = TokenType::KEYWORD;
+                //     } else if let Some(operators) = OPERATORS.get() {
+                //         // __ Проверяем, на оператор
+                //         if operators
+                //             .get(find_token.text.to_lowercase().as_str())
+                //             .is_some()
+                //         {
+                //             find_token.token_type = TokenType::OPERATOR;
+                //         }
+                //     }
+                // }
 
                 return Some(find_token);
             }
@@ -489,24 +623,56 @@ fn get_token(code: &str) -> Option<Token> {
 
 fn get_code_string() -> String {
     String::from(
-        r"
-            ДиаметрРулона = 0.35;
-            КоличествоОборотов = 30;  // по КР № 33_23  3 оборота (потом вернуть на 2)
-            Припуск = 0.3;
-            К1 = 0.1;  //  % отхода = 0
+        r#"
+            Длина = [Матрас].[Длина];
+            Ширина = [Матрас].[Ширина];
 
-            Результат = Припуск * КоличествоОборотов;
+            КоличествоСлоев = [ВысотаИзСпецификации];
 
-            Если Результат > 10 Тогда
-                Переменная = 5;
-            ИначеЕсли Результат<8 Тогда
-                Переменная = 10;
-            иначе
-            Переменная = 15;
+            Если не ЗначениеЗаполнено(КоличествоСлоев) Тогда
+                Предупреждение("Не задано количество слоев клея");
             КонецЕсли;
 
-        ",
+            T1 = 0.045 ;
+            К1 = 1;
+
+            Если Длина > 2 Тогда
+                Длина = 2;
+            КонецЕсли;
+            Если Ширина > 2 Тогда
+                Ширина = 2;
+            КонецЕсли;
+            Если Длина <= 0.44 Тогда
+                [Клей] = 0;
+            Иначе
+                [Клей] = Длина * Ширина * КоличествоСлоев * T1 * К1;
+            КонецЕсли;
+        "#,
     )
+    // String::from(
+    //     r#"
+    //         ДиаметрРулона = 0.35;
+    //         КоличествоОборотов = 30;  // по КР № 33_23  3 оборота (потом вернуть на 2)
+    //         Припуск = 0.3;
+    //         К1 = 0.1;  //  % отхода = 0
+    //
+    //         Результат = Припуск * КоличествоОборотов;
+    //
+    //         Если Результат > 10 Тогда
+    //             Переменная = 5;
+    //         ИначеЕсли Результат<8 Тогда
+    //             Переменная = 10;
+    //         иначе
+    //         Переменная = 15;
+    //         КонецЕсли;
+    //
+    //         Если не ЗначениеЗаполнено(КоличествоСлоев) Тогда
+    //         Предупреждение("Не задано количество слоев клея");
+    //         КонецЕсли;
+    //
+    //
+    //     "#,
+    // )
 
     // String::from(
     //     r"
@@ -563,7 +729,7 @@ async fn get_data(order_id: i64) -> Result<Vec<OrderProcessRow>> {
         .await
         .context("Ошибка соединения с БД")?;
 
-    let order_tree = get_order_data_tree(&pool, order_id)
+    let order_tree = get_order_data_tree_pool(&pool, order_id)
         .await
         .context("Ошибка получения Заявки")?;
 
@@ -574,3 +740,79 @@ async fn get_data(order_id: i64) -> Result<Vec<OrderProcessRow>> {
 
     Ok(order_tree)
 }
+
+
+//
+// "[МаркировкаСборочный].[Длина]"
+// "[Матрас].[Длина]"
+// "[Наматрасник].[Ширина]"
+// "[Кровать].[ЦветТкани]"
+// "[Подматрасник].[Ширина]"
+// "[БлокПружинный].[Ширина]"
+// "[ЧехолДляНаматрасника].[Длина]"
+// "[ДетальПолотнаСтеганные].[Ширина]"
+// "[ЧехолДляПодушки].[Ширина]"
+// "[Подушка].[Высота]"
+// "[ПотельноеБелье].[Ширина]"
+// "[КаталогТканей].[Длина]"
+// "[БлокПружинный].[Длина]"
+// "[НаматрасникЗащитный].[Ширина]"
+// "[ЧехолДляМатраса].[Высота]"
+// "[ДетальКровать].[Ширина]"
+// "[ШвейныеМатериалы].[Длина]"
+// "[НастилМатериалы].[Ширина]"
+// "[Кровать].[Ширина]"
+// "[ЧехолДляНаматрасника].[Ширина]"
+// "[ДетальПолотна].[Длина]"
+// "[ЧехолДляНаматрасника].[Высота]"
+// "[Крой деталь].[Длина]"
+// "[Нашивка].[Ширина]"
+// "[ПотельноеБелье].[Длина]"
+// "[ОдеялаСтеганные].[Высота]"
+// "[НетканыйМатериал].[Длина]"
+// "[Кровать].[Длина]"
+// "[НетканыйМатериал].[Ширина]"
+// "[ДетальКровать].[Длина]"
+// "[УпаковМатериалы].[Ширина]"
+// "[ШвейныеМатериалы].[Ширина]"
+// "[ОдеялаСтеганные].[Длина]"
+// "[УпаковМатериалы].[РабочаяШирина]"
+// "[УпаковМатериалы].[Длина]"
+// "[КаталогНаматрасников].[Длина]"
+// "[УпаковМатериалы].[Высота]"
+// "[ДетальПолотнаСтеганные].[Длина]"
+// "[ЧехолДляМатраса].[Ширина]"
+// "[Повязка защитная].[Ширина]"
+// "[НастилМатериалы].[Длина]"
+// "[Подматрасник].[Длина]"
+// "[Нашивка].[Длина]"
+// "[ДетальПолотна].[Ширина]"
+// "[Ручка].[Ширина]"
+// "[Повязка защитная].[Длина]"
+// "[ЧехолДляКаталогаНаматрасников].[Длина]"
+// "[Матрас].[Высота]"
+// "[ШвейныеМатериалы].[ЦветТкани]"
+// "[ЧехолДляКаталогаНаматрасников].[Ширина]"
+// "[Крой деталь].[Высота]"
+// "[КаталогНаматрасников].[Ширина]"
+// "[МаркировкаСборочный].[Ширина]"
+// "[НетканыйМатериал].[Высота]"
+// "[Наматрасник].[Высота]"
+// "[ОдеялаСтеганные].[Ширина]"
+// "[НаматрасникЗащитный].[Длина]"
+// "[ЧехолДляПодушки].[Длина]"
+// "[Подушка].[Длина]"
+// "[ЧехолДляМатраса].[Длина]"
+// "[Подушка].[Ширина]"
+// "[ПолотнаСтеганные].[Ширина]"
+// "[КаталогТканей].[Ширина]"
+// "[Матрас].[Ширина]"
+// "[НетканыйМатериал].[Плотность]"
+// "[КаталогТканей].[Высота]"
+// "[Ручка].[Длина]"
+// "[НастилМатериалы].[Плотность]"
+// "[Крой деталь].[Ширина]"
+// "[Наматрасник].[Длина]"
+// "[БлокПружинный].[Высота]"
+// "[НастилМатериалы].[Высота]"
+//
