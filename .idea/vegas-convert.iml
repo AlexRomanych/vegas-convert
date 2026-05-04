@@ -10,6 +10,7 @@
       <sourceFolder url="file://$MODULE_DIR$/interpreter/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/orders/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/procedures/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/materials/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/excel_parser/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>

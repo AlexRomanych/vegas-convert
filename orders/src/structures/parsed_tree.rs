@@ -21,6 +21,7 @@ pub struct Construct {
 // Главная структура строки заказа
 #[derive(sqlx::FromRow, Debug)]
 pub struct OrderProcessRow {
+    pub order_id:     i64,  // id Заявки к которой относится строка
     pub line_id:      i64,
     pub model_name:   String,
     pub width:        Option<i16>,

@@ -4,7 +4,7 @@ members = [
     "database",
     "excel_parser",
     "interpreter",
-    "logger",
+    "logger", "materials",
     "orders", "procedures",
 #    "common_logger",
 ]

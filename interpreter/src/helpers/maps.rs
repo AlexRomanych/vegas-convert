@@ -1,7 +1,7 @@
+use crate::TokenType;
+use regex::Regex;
 use std::collections::HashMap;
 use std::sync::OnceLock;
-use regex::Regex;
-use crate::TokenType;
 
 // __ Карта токенов
 pub static TOKEN_MAP: OnceLock<Vec<(TokenType, Regex)>> = OnceLock::new();
@@ -9,17 +9,17 @@ pub fn get_token_map() -> &'static Vec<(TokenType, Regex)> {
     TOKEN_MAP.get_or_init(|| {
         vec![
             // !!! Тут важен порядок
-            // 1. Parameter: [Объект].{Параметр}
+            // 1. Property: [Объект].{Параметр}
             // Самый длинный и специфичный — первым
-            (TokenType::PARAMETER, Regex::new(r"^\[[^]]+\]\.\{[^}]+\}").unwrap()),
-            // 2. Property: [Объект].[Свойство]
+            (TokenType::PROPERTY, Regex::new(r"^\[[^]]+\]\.\{[^}]+\}").unwrap()),
+            // 2. Parameter: [Объект].[Свойство]
             // Средний по сложности
-            (TokenType::PROPERTY, Regex::new(r"^\[[^]]+\]\.\[[^]]+\]").unwrap()),
+            (TokenType::PARAMETER, Regex::new(r"^\[[^]]+\]\.\[[^]]+\]").unwrap()),
+            // (TokenType::PARAMETER, Regex::new(r"^(\[[^\]]+\]\.\[[^\]]+\])\s*([^\s;]?)").unwrap()),
             // 3. Return: [Объект]
             // Самый короткий — последним из этой группы
             (TokenType::RETURN, Regex::new(r"^\[[^]]+\]").unwrap()),
             // !!! End block
-
             (TokenType::SEMICOLON, Regex::new("^;").unwrap()),
             (TokenType::COMMA, Regex::new(r"^,").unwrap()),
             (TokenType::SPACE, Regex::new(r"^\s+").unwrap()),
@@ -40,17 +40,13 @@ pub fn get_token_map() -> &'static Vec<(TokenType, Regex)> {
             (TokenType::SLASH, Regex::new(r"^/").unwrap()), // Для деления "/"
             (TokenType::LPAR, Regex::new(r"^\(").unwrap()), // Левая скобка "("
             (TokenType::RPAR, Regex::new(r"^\)").unwrap()), // Правая скобка ")"
-
             (TokenType::FIX, Regex::new(r"(?i)^(цел)\b").unwrap()),
             (TokenType::ROUND, Regex::new(r"(?i)^(окр)\b").unwrap()),
-            (TokenType::ALARM, Regex::new(r"(?i)^(предупреждение)\b").unwrap()),
-            (TokenType::MISSING, Regex::new(r"(?i)^(ЗначениеЗаполнено)\b").unwrap()),
-
+            // (TokenType::ALARM, Regex::new(r"(?i)^(предупреждение)\b").unwrap()),
+            // (TokenType::MISSING, Regex::new(r"(?i)^(ЗначениеЗаполнено)\b").unwrap()),
             // Строка: "Не задано количество слоев клея"
-            (TokenType::STRING, Regex::new(r#"^"([^"]*)""#).unwrap()),
-
-
-
+            (TokenType::STRING, Regex::new(r#"^"[^"]*""#).unwrap()),
+            // (TokenType::STRING, Regex::new(r#"^"([^"]*)""#).unwrap()),
             // Если / If
             (TokenType::IF, Regex::new(r"(?i)^(если|if)\b").unwrap()),
             // ИначеЕсли / ElseIf
@@ -61,7 +57,6 @@ pub fn get_token_map() -> &'static Vec<(TokenType, Regex)> {
             (TokenType::ENDIF, Regex::new(r"(?i)^(конецесли|endif)\b").unwrap()),
             // Тогда / Then
             (TokenType::THEN, Regex::new(r"(?i)^(тогда|then)\b").unwrap()),
-
             // !!! Оставляем переменную в самом конце
             (TokenType::NUMBER, Regex::new(r"^[0-9]+([.,][0-9]+)?").unwrap()),
             (TokenType::VARIABLE, Regex::new(r"(?i)^[а-яёa-z_][а-яёa-z0-9_]*").unwrap()),

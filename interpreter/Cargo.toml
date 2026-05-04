@@ -10,4 +10,5 @@ tokio = { version = "1.52.1", features = ["full"] }
 
 database = { path = "../database" }
 orders = { path = "../orders" }
-procedures = {path = "../procedures"}
+procedures = { path = "../procedures" }
+materials = { path = "../materials" }
