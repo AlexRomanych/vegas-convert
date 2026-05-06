@@ -215,15 +215,33 @@ impl ParsedProcedure {
                 self.parameters
                     .insert(var.clone(), *val);
             }
-            if let Some(v) = self.parameters_raw.get(var) {
-                self.parameters
-                    .insert(var.clone(), *val);
+
+            // __ Вставляем входные параметры в оригинальные названия парметров после паринга токенов [Матрас].[Длина]
+            // __ Приходят только в виде вектора кортежей ("Длина", 2.0)
+            for (k, v) in self.parameters_raw.iter_mut() {
+                for (parameter, value) in scopes {
+                    if k.contains(parameter) {
+                        *v = *value;
+                        break;
+                    }
+                }
             }
 
             // __ Вставляем входные свойства
             if let Some(v) = self.properties.get(var) {
                 self.properties
                     .insert(var.clone(), *val);
+            }
+
+            // __ Вставляем входные свойства в оригинальные названия парметров после паринга токенов [Матрас].[Длина]
+            // __ Приходят только в виде вектора кортежей ("Длина", 2.0)
+            for (k, v) in self.properties_raw.iter_mut() {
+                for (parameter, value) in scopes {
+                    if k.contains(parameter) {
+                        *v = *value;
+                        break;
+                    }
+                }
             }
         }
     }
@@ -468,13 +486,13 @@ async fn main() -> Result<()> {
         .unwrap()
         .clone();
 
-    target_procedure
-        .tokens
-        .iter()
-        .enumerate() // Добавляет счетчик (0, 1, 2...)
-        .for_each(|(i, token)| {
-            println!("{i}: {token:?}");
-        });
+    // target_procedure
+    //     .tokens
+    //     .iter()
+    //     .enumerate() // Добавляет счетчик (0, 1, 2...)
+    //     .for_each(|(i, token)| {
+    //         println!("{i}: {token:?}");
+    //     });
 
     target_procedure.un_raw();
 
@@ -485,20 +503,23 @@ async fn main() -> Result<()> {
         ("Плотность".to_string(), 25.0),
         ("ВысотаИзСпецификации".to_string(), 0.145),
     ];
-    target_procedure.set_scopes(&in_scope);
+    target_procedure.set_scopes(&in_scope); // __ Устанавливаем Scopes в процедуре
 
-    println!("Параметры: {:#?}", target_procedure.parameters);
-    println!("Свойства: {:#?}", target_procedure.properties);
-    println!("Выходные значения: {:#?}", target_procedure.returns);
-    println!("Выходные параметры: {:#?}", target_procedure.outputs);
+    println!("Параметры: {:#?}", target_procedure.parameters_raw);
+    println!("Свойства: {:#?}", target_procedure.properties_raw);
+    // println!("Выходные значения: {:#?}", target_procedure.returns);
+    // println!("Выходные параметры: {:#?}", target_procedure.outputs);
 
     println!("{:#?}", target_material);
 
 
     let mut parser = Parser::new(target_procedure.tokens.clone());
+    parser.set_parser_in_scope(&target_procedure.parameters_raw, &target_procedure.properties_raw);
     let expressions_node = parser.parse_code();
+    parser.run(&expressions_node);
+    println!("scope: {:#?}", parser.scope);
 
-    println!("{:#?}", expressions_node);
+    // println!("{:#?}", expressions_node);
 
     // parser.run(&expressions_node);
     //
@@ -537,19 +558,38 @@ async fn main() -> Result<()> {
 
 #[derive(Debug)]
 pub struct Parser {
-    tokens: Vec<Token>,
-    pos:    usize,
-    scope:  HashMap<String, f64>, // __ Scope хранит значения переменных
+    // procedure: ParsedProcedure,
+    tokens:   Vec<Token>,
+    pos:      usize,
+    scope:    HashMap<String, f64>, // __ Scope хранит значения переменных
+    in_scope: HashMap<String, f64>, // __ Scope входящие параметры + свойства
 }
 
 impl Parser {
+    // __ Конструктор
     pub fn new(tokens: Vec<Token>) -> Self {
         Self {
             tokens,
             pos: 0,
             scope: HashMap::new(),
+            in_scope: HashMap::new(),
         }
     }
+
+    // __ Установка входного scope
+    pub fn set_parser_in_scope(&mut self, scope_parameters: &HashMap<String, f64>, scope_properties: &HashMap<String, f64>) {
+        for (k, v) in scope_parameters {
+            self.in_scope
+                .insert(k.clone(), v.clone());
+        }
+        for (k, v) in scope_properties {
+            self.in_scope
+                .insert(k.clone(), v.clone());
+        }
+
+        println!("scope: {:#?}", self.in_scope);
+    }
+
 
     // __ Вспомогательные методы
     fn match_token(&mut self, types: &[TokenType]) -> Option<Token> {
@@ -617,7 +657,138 @@ impl Parser {
     }
 
     #[rustfmt::skip]
+    // 1. Самый низкий приоритет: Логические И / ИЛИ
     fn parse_formula(&mut self) -> ExpressionNode {
+        let mut left_node = self.parse_comparison();
+
+        while let Some(operator) = self.match_token(&[TokenType::AND, TokenType::OR]) {
+            let right_node = self.parse_comparison();
+            left_node = ExpressionNode::BinOperation {
+                operator,
+                left: Box::new(left_node),
+                right: Box::new(right_node),
+            };
+        }
+        left_node
+    }
+
+    // 2. Сравнения: =, <>, >, <, >=, <=
+    fn parse_comparison(&mut self) -> ExpressionNode {
+        let mut left_node = self.parse_additive();
+
+        while let Some(operator) = self.match_token(&[
+            TokenType::ASSIGN, // В 1С внутри условия '=' это сравнение
+            TokenType::NE,
+            TokenType::GT,
+            TokenType::LT,
+            TokenType::GE,
+            TokenType::LE,
+        ]) {
+            let right_node = self.parse_additive();
+            left_node = ExpressionNode::BinOperation {
+                operator,
+                left: Box::new(left_node),
+                right: Box::new(right_node),
+            };
+        }
+        left_node
+    }
+
+    // 3. Сложение и вычитание: +, -
+    fn parse_additive(&mut self) -> ExpressionNode {
+        let mut left_node = self.parse_multiplicative();
+
+        while let Some(operator) = self.match_token(&[TokenType::PLUS, TokenType::MINUS]) {
+            let right_node = self.parse_multiplicative();
+            left_node = ExpressionNode::BinOperation {
+                operator,
+                left: Box::new(left_node),
+                right: Box::new(right_node),
+            };
+        }
+        left_node
+    }
+
+    // 4. Умножение и деление: *, /
+    fn parse_multiplicative(&mut self) -> ExpressionNode {
+        let mut left_node = self.parse_unary();
+
+        while let Some(operator) = self.match_token(&[TokenType::STAR, TokenType::SLASH]) {
+            let right_node = self.parse_unary();
+            left_node = ExpressionNode::BinOperation {
+                operator,
+                left: Box::new(left_node),
+                right: Box::new(right_node),
+            };
+        }
+        left_node
+    }
+
+    // 5. Унарные операции: не, - (отрицание)
+    fn parse_unary(&mut self) -> ExpressionNode {
+        if let Some(operator) = self.match_token(&[TokenType::NOT, TokenType::MINUS]) {
+            let operand = self.parse_parentheses();
+            return ExpressionNode::UnaryOperation {
+                operator,
+                operand: Box::new(operand),
+            };
+        }
+        self.parse_parentheses()
+    }
+
+    // 6. Самый высокий приоритет: Скобки, Функции, Литералы
+    fn parse_parentheses(&mut self) -> ExpressionNode {
+        if self
+            .match_token(&[TokenType::LPAR])
+            .is_some()
+        {
+            let node = self.parse_formula(); // Начинаем цикл приоритетов заново внутри скобок
+            self.require(&[TokenType::RPAR]);
+            node
+        } else {
+            self.parse_variable_or_number()
+        }
+    }
+
+    fn parse_variable_or_number(&mut self) -> ExpressionNode {
+        if let Some(token) = self.match_token(&[TokenType::NUMBER]) {
+            return ExpressionNode::Number(token);
+        }
+
+        if let Some(token) = self.match_token(&[TokenType::STRING]) {
+            return ExpressionNode::String(token);
+        }
+
+        if let Some(token) = self.match_token(&[TokenType::VARIABLE]) {
+            // Проверка на вызов функции: Имя(Аргументы)
+            if self
+                .match_token(&[TokenType::LPAR])
+                .is_some()
+            {
+                let mut args = Vec::new();
+                if self.tokens[self.pos].token_type != TokenType::RPAR {
+                    loop {
+                        args.push(self.parse_formula());
+                        if self
+                            .match_token(&[TokenType::COMMA])
+                            .is_none()
+                        {
+                            break;
+                        }
+                    }
+                }
+                self.require(&[TokenType::RPAR]);
+                return ExpressionNode::FunctionCall { name: token, args };
+            }
+            return ExpressionNode::Variable(token);
+        }
+
+        let current = &self.tokens[self.pos];
+        panic!("Неожиданный токен {:?} на позиции {}", current.token_type, self.pos);
+    }
+
+
+    fn parse_formula_old(&mut self) -> ExpressionNode {
         // Сначала проверяем на унарные операторы (НЕ, МИНУС и т.д.)
         if let Some(operator) = self.match_token(&[TokenType::NOT, TokenType::MINUS]) {
             let operand = self.parse_parentheses(); // Или parse_unary для рекурсии
@@ -643,7 +814,6 @@ impl Parser {
             TokenType::NE,
             TokenType::NOT,
             TokenType::ASSIGN, // <-- Добавь это здесь!
-
         ]) {
             let right_node = self.parse_parentheses();
             left_node = ExpressionNode::BinOperation {
@@ -655,7 +825,7 @@ impl Parser {
         left_node
     }
 
-    fn parse_parentheses(&mut self) -> ExpressionNode {
+    fn parse_parentheses_old(&mut self) -> ExpressionNode {
         if self
             .match_token(&[TokenType::LPAR])
             .is_some()
@@ -668,7 +838,7 @@ impl Parser {
         }
     }
 
-    fn parse_variable_or_number(&mut self) -> ExpressionNode {
+    fn parse_variable_or_number_old(&mut self) -> ExpressionNode {
         // 1. Числа
         if let Some(token) = self.match_token(&[TokenType::NUMBER]) {
             return ExpressionNode::Number(token);
@@ -772,7 +942,7 @@ impl Parser {
     }
 
 
-    // --- Интерпретатор (Метод run) ---
+    // __ Интерпретатор (Метод run)
     #[rustfmt::skip] // Запрещаем форматеру трогать этот массив
     pub fn run(&mut self, node: &ExpressionNode) -> f64 {
         match node {
@@ -781,35 +951,61 @@ impl Parser {
                 .replace(",", ".")
                 .parse::<f64>()
                 .unwrap_or(0.0),
-            ExpressionNode::Variable(token) => *self
-                .scope
-                .get(&token.text)
-                .expect(&format!("Переменная {} не найдена", token.text)),
+            ExpressionNode::Variable(token) => {
+                if let Some(value) = self.in_scope.get(&token.text) {
+                    return *value;
+                }
+                *self.scope.get(&token.text).expect(&format!("Переменная {} не найдена", token.text))
+            },
             ExpressionNode::BinOperation { operator, left, right } => {
                 let l_val = self.run(left);
                 let r_val = self.run(right);
-                match operator.token_type {
-                    TokenType::ASSIGN => if l_val == r_val { 1.0 } else { 0.0 }, // Сравнение!
-                    TokenType::GT => if l_val > r_val { 1.0 } else { 0.0 },
-                    TokenType::LT => if l_val < r_val { 1.0 } else { 0.0 },
-                    TokenType::GE => if l_val >= r_val { 1.0 } else { 0.0 },
-                    TokenType::LE => if l_val <= r_val { 1.0 } else { 0.0 },
-                    TokenType::AND => if l_val > 0.0 && r_val > 0.0 { 1.0 } else { 0.0 },
-                    TokenType::OR  => if l_val > 0.0 || r_val > 0.0 { 1.0 } else { 0.0 },
-                    TokenType::PLUS => l_val + r_val,
-                    TokenType::MINUS => l_val - r_val,
-                    TokenType::STAR => l_val * r_val,
-                    TokenType::SLASH => l_val / r_val,
+                let raw_result = match operator.token_type {
+                    TokenType::ASSIGN => if (l_val - r_val).abs() < 1e-10 { 1.0 } else { 0.0 }, // __ Сравнение в форме вычитания из-за точности
+                    TokenType::GT     => if l_val > r_val { 1.0 } else { 0.0 },
+                    TokenType::LT     => if l_val < r_val { 1.0 } else { 0.0 },
+                    TokenType::GE     => if l_val >= r_val { 1.0 } else { 0.0 },
+                    TokenType::LE     => if l_val <= r_val { 1.0 } else { 0.0 },
+                    TokenType::AND    => if l_val > 0.0 && r_val > 0.0 { 1.0 } else { 0.0 },
+                    TokenType::OR     => if l_val > 0.0 || r_val > 0.0 { 1.0 } else { 0.0 },
+                    TokenType::PLUS   => l_val + r_val,
+                    TokenType::MINUS  => l_val - r_val,
+                    TokenType::STAR   => l_val * r_val,
+                    TokenType::SLASH  => {
+                        if r_val == 0.0 {
+                            println!("⚠️ Деление на ноль!");
+                            0.0
+                        } else {
+                            l_val / r_val
+                        }
+                    },
                     _ => 0.0,
+                };
+
+                // Округляем только математические операции (не логические 1.0/0.0)
+                if matches!(operator.token_type, TokenType::PLUS | TokenType::MINUS | TokenType::STAR | TokenType::SLASH) {
+                    Self::round_to_precision(raw_result)
+                } else {
+                    raw_result
                 }
+
             },
             ExpressionNode::Assign { left, right, .. } => {
                 let result = self.run(right);
+                // Присваиваем уже округленное значение
+                let clean_result = Self::round_to_precision(result);
+
                 if let ExpressionNode::Variable(v) = &**left {
-                    self.scope
-                        .insert(v.text.clone(), result);
+                    self.scope.insert(v.text.clone(), clean_result);
                 }
-                result
+                clean_result
+
+                // let result = self.run(right);
+                // if let ExpressionNode::Variable(v) = &**left {
+                //     self.scope
+                //         .insert(v.text.clone(), result);
+                // }
+                // result
             },
             ExpressionNode::If { branches, else_body } => {
                 let mut executed = false;
@@ -842,9 +1038,72 @@ impl Parser {
                 }
                 last_val
             },
+            ExpressionNode::FunctionCall{ name, args } => {
+                match name.text.as_str() {
+                    "Окр" => {
+                        let value = self.run(&args[0]);
+                        let digits = if args.len() > 1 { self.run(&args[1]) as i32 } else { 0 };
+                        let factor = 10.0_f64.powi(digits);
+                        (value * factor).round() / factor
+                    },
+                    "Цел" => {
+                        // Получаем значение первого аргумента
+                        let value = if let Some(first_arg) = args.get(0) {
+                            self.run(first_arg)
+                        } else {
+                            0.0
+                        };
+                        value.trunc() // .trunc() отсекает дробную часть, оставляя целое число (3.9 -> 3.0, -3.9 -> -3.0)
+                    },
+                    "ЗначениеЗаполнено" => {
+                        // Получаем значение аргумента. Если его нет — по умолчанию 0.0
+                        let value = args.get(0).map_or(0.0, |arg| self.run(arg));
+
+                        // В 1С для чисел ЗначениеЗаполнено возвращает Истина, если число не 0.
+                        // Учитываем "хвосты" f64, используя эпсилон-сравнение
+                        if value.abs() > 1e-10 {
+                            1.0
+                        } else {
+                            0.0
+                        }
+                    },
+                    "Предупреждение" => {
+                        // 1. Пытаемся получить аргумент.
+                        // Поскольку Предупреждение в 1С чаще всего принимает строку, нам нужно решить, как её отобразить.
+                        if let Some(arg) = args.get(0) {
+                            // Если это строковый литерал (ExpressionNode::String), берем текст без кавычек
+                            // Если это число или переменная, запускаем run()
+                            match arg {
+                                ExpressionNode::String(token) => {
+                                    // Убираем кавычки для чистого вывода
+                                    let clean_text = token.text.trim_matches('"');
+                                    println!("⚠️  1С Предупреждение: {}", clean_text);
+                                },
+                                _ => {
+                                    let val = self.run(arg);
+                                    println!("⚠️  1С Предупреждение: {}", val);
+                                }
+                            }
+                        }
+                        0.0 // Функция Предупреждение ничего не возвращает в 1С
+                    },
+                    _ => {
+                        println!("Пропущенная функция: {}", name.text);
+                        0.0
+                    },
+                }
+
+            },
             _ => 0.0,
         }
     }
+
+    // __ Округление
+    fn round_to_precision(val: f64) -> f64 {
+        let precision = 1_000_000_000_0.0; // 10 знаков после запятой
+        (val * precision).round() / precision
+    }
+
 }
 
 
@@ -951,7 +1210,7 @@ fn get_procedures_local() -> Vec<Procedure> {
     let text = String::from(
         r#"
                 ВысотаБорт = [ВысотаИзСпецификации];
-                Если не ЗначениеЗаполнено(ВысотаБорт) Тогда
+                Если  ЗначениеЗаполнено(ВысотаБорт) Тогда
                     Предупреждение("Не задана высота отбортовки ППУ");
                 КонецЕсли;
                 Длина = [Матрас].[Длина];
