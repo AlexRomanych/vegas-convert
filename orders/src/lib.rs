@@ -89,7 +89,8 @@ pub async fn get_order_data_tree_pool(pool: &sqlx::PgPool, order_ids: HashSet<i6
                                     'pc', mci.procedure_code_1c,
                                     'pn', mci.procedure_name,
                                     'h', mci.detail_height,
-                                    'a', mci.amount
+                                    'a', mci.amount,
+                                    'u', mci.material_unit
                                 ))
                                 FROM model_construct_items mci
                                 WHERE mci.construct_code_1c = mc.code_1c
@@ -111,7 +112,8 @@ pub async fn get_order_data_tree_pool(pool: &sqlx::PgPool, order_ids: HashSet<i6
                                     'pc', mcic.procedure_code_1c,
                                     'pn', mcic.procedure_name,
                                     'h', mcic.detail_height,
-                                    'a', mcic.amount
+                                    'a', mcic.amount,
+                                    'u', mcic.material_unit
                                 ))
                                 FROM model_construct_items mcic
                                 WHERE mcic.construct_code_1c = mcc.code_1c

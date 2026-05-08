@@ -12,3 +12,4 @@ database = { path = "../database" }
 orders = { path = "../orders" }
 procedures = { path = "../procedures" }
 materials = { path = "../materials" }
+log = "0.4.29"
