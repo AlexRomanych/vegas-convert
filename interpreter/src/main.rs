@@ -9,6 +9,8 @@ use crate::structures::parser::Parser;
 use crate::structures::tokens::{Token, TokenType};
 use anyhow::{Context, Result};
 use helpers::maps::*;
+use log::log;
+use materials::structures::material::Material;
 use materials::{get_materials, get_materials_lookup};
 use orders::structures::parsed_tree::OrderProcessRow;
 use orders::{get_order_data_tree, get_order_data_tree_pool, get_order_with_lines};
@@ -19,8 +21,6 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::env;
 use std::sync::OnceLock;
 use std::time::Instant;
-use log::log;
-use materials::structures::material::Material;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -40,7 +40,8 @@ async fn main() -> Result<()> {
 
 
     // __ Получаем структуру для парсинга
-    let orders_ids = HashSet::from([820_i64, 821_i64]);
+    let orders_ids = HashSet::from([295_i64]);
+    // let orders_ids = HashSet::from([820_i64, 821_i64]);
     let orders = get_data(orders_ids).await?;
 
     // __ Получаем материалы
@@ -84,7 +85,7 @@ async fn main() -> Result<()> {
     // __ Получаем процедуры с сервера
     let procedures = get_procedures_by_list_code_1c(&procedures_unique).await?; // из списка
 
-    // let procedures = get_procedures().await?; // все
+    let procedures = get_procedures().await?; // все
     // let procedures = get_procedures_local(); // для разработки
 
 
@@ -267,26 +268,53 @@ async fn main() -> Result<()> {
         prepare_procedures.insert(procedure.code_1c, parsed_procedure); // !!!
     } // !!!
 
+    // !!! Debug
     // println!("parsed_procedure: {:#?}", prepare_procedures);
-
 
     // let target_material = materials.get("000000691").unwrap();
     // let mut target_procedure = prepare_procedures
     //     .get("_")
     //     .unwrap()
     //     .clone();
-
-
+    //
     // target_procedure.un_raw();
-
+    // println!("Процедура: {:#?}", target_procedure);
+    // //
+    // // return Ok(());
     // let in_scope: Vec<(String, f64)> = vec![
     //     ("Длина".to_string(), 2.0),
     //     ("Ширина".to_string(), 1.6),
     //     ("Высота".to_string(), 0.2),
     //     ("Плотность".to_string(), 25.0),
-    //     ("ВысотаИзСпецификации".to_string(), 0.145),
+    //     ("ВысотаИзСпецификации".to_string(), 4.0),
     // ];
     // target_procedure.set_scopes(&in_scope); // __ Устанавливаем Scopes в процедуре
+    // //
+    // println!("Процедура: {:#?}", target_procedure);
+    // return Ok(());
+
+    // let mut parser = Parser::new();
+    // parser.reset();
+    //
+    // // __ Устанавливаем Scope в парсере
+    // parser.set_parser_in_scope(&target_procedure.parameters_raw, &target_procedure.properties_raw);
+    //
+    // // __ Запускаем Парсер
+    // parser.run(&target_procedure.expressions_node);
+    //
+    // // __ Парсим результат выполнения функции
+    // let (result, rest) =  &target_procedure.set_results(&parser.scope);
+    //
+    // println!("Result: {:?}", result);
+    //
+    // // __ Парсим выходные параметры. Здесь не надо, потому что не ищем материал
+    // &target_procedure.set_outputs(&parser.scope);
+    //
+    // println!("Процедура: {:#?}", target_procedure);
+    // println!("Парсер: {:#?}", parser);
+    //
+    // return Ok(());
+    // !!! ================================
 
     // println!("Параметры: {:#?}", target_procedure.parameters_raw);
     // println!("Свойства: {:#?}", target_procedure.properties_raw);
@@ -295,8 +323,6 @@ async fn main() -> Result<()> {
 
     // println!("{:#?}", target_material);
 
-
-    // let mut parser = Parser::new(target_procedure.tokens.clone());
     // parser.set_parser_in_scope(&target_procedure.parameters_raw, &target_procedure.properties_raw);
     // let expressions_node = parser.parse_code();
     // parser.run(&expressions_node);
@@ -328,54 +354,78 @@ async fn main() -> Result<()> {
     // println!("{:#?}", unique_properties.iter().for_each(|(text, token)| println!("{:?}", text) ));
     // println!("{:#?}", unique_returns.iter().for_each(|(text, token)| println!("{:?}", text) ));
 
+
     // rustfmt:skip
     for (order_id, order_lines) in orders {
         for order_line in order_lines {
-            if let Some(base_vec) = &order_line.base {
-                for base in base_vec.iter() {
-                    if let Some(items) = &base.items {
-                        for item in items.iter() {
-                            // __ Пропускаем материал, которого по какой-то причине нет в материалах
-                            if let Some(material_code) = &item.mc {
-                                // __ Получаем материал из базы материалов
-                                if let Some(material) = materials.get(material_code) {
-                                    // println!("{}", material.name);
-                                    // __ Смотрим, есть ли у материала процедура расчета или нет
-                                    if let Some(procedure_code) = &item.pc {
-                                        // __ Есть процедура
-                                        let mut procedure = prepare_procedures.get(procedure_code).unwrap().clone();
+            // !!! Debug
+            println!(
+                "{}x{}x{} : {} - {}",
+                order_line.get_width() * 100f64,
+                order_line.get_length() * 100f64,
+                order_line.get_height() * 100f64,
+                order_line.model_name,
+                order_line.amount
+            );
+            println!("===============================================");
 
-                                        // __ Формируем Входящий Scope Добавляем размеры элементов
-                                        let mut in_scope: Vec<(String, f64)> = Vec::from([
-                                                ("Длина".to_string(), order_line.get_length()),
-                                                ("Ширина".to_string(), order_line.get_width()),
+            // if !order_line.model_name.contains("F5") {
+            //     continue;
+            // }
+
+            // __ Два прохода: База и Чехол
+            for i in 0..=1 {
+                let source_data = if i == 0 { &order_line.base } else { &order_line.cover };
+
+                if let Some(construct_vec) = &source_data {
+                    // !!! Debug
+                    // println!("{} {}", order_line.model_name, base_vec.len());
+                    // // println!("{:#?}", base_vec);
+                    // println!("===============================================");
+
+
+                    // __ МЭ
+                    for construct in construct_vec.iter() {
+                        if let Some(items) = &construct.items {
+                            for item in items.iter() {
+                                // __ Пропускаем материал, которого по какой-то причине нет в материалах
+                                if let Some(material_code) = &item.mc {
+                                    // __ Получаем материал из базы материалов
+                                    if let Some(material) = materials.get(material_code) {
+                                        // println!("{}", material.name);
+                                        // __ Смотрим, есть ли у материала процедура расчета или нет
+                                        if let Some(procedure_code) = &item.pc {
+                                            // !!! Debug
+                                            // if !material.name.contains("ПС ") {
+                                            //     continue;
+                                            // };
+
+                                            // __ Есть процедура
+                                            let mut procedure = prepare_procedures
+                                                .get(procedure_code)
+                                                .unwrap()
+                                                .clone();
+
+                                            // __ Формируем Входящий Scope Добавляем размеры элементов
+                                            // !!! Порядок важен
+                                            let mut in_scope: Vec<(String, f64)> = Vec::from([
                                                 ("Высота".to_string(), order_line.get_height()),
                                                 ("ВысотаИзСпецификации".to_string(), item.h.unwrap_or_default()),
-                                        ]);
+                                                ("Длина".to_string(), order_line.get_length()),
+                                                ("Ширина".to_string(), order_line.get_width()),
+                                            ]);
 
-                                        // __ Дополняем Входящий Scope
-                                        if let Some(properties_map) = &material.properties_map_numeric {
-                                            properties_map
-                                                .iter()
-                                                .map(|(k, v)| in_scope.push((k.clone(), v.clone())));
-                                            // in_scope = properties_map.iter()
-                                            //     .map(|(k, v)| (k.clone(), *v))
-                                            //     .collect();
-                                        }
+                                            // !!! Debug
+                                            // println!("item: {:?}", item);
 
-                                        // __ Смотрим, это материал или категория. Если материал - возвращаем его
-                                        if material.is_material() {
-                                            // __ Если это материал - возвращаем его
-
-                                            // // __ Дополняем Входящий Scope
-                                            // if let Some(properties_map) = &material.properties_map_numeric {
-                                            //     properties_map
-                                            //         .iter()
-                                            //         .map(|(k, v)| in_scope.push((k.clone(), v.clone())));
-                                            //     // in_scope = properties_map.iter()
-                                            //     //     .map(|(k, v)| (k.clone(), *v))
-                                            //     //     .collect();
-                                            // }
+                                            // __ Дополняем Входящий Scope
+                                            if let Some(properties_map) = &material.properties_map_numeric {
+                                                let properties_vec: Vec<(String, f64)> = properties_map
+                                                    .iter()
+                                                    .map(|(k, v)| (k.clone(), *v)) // Клонируем String, копируем f64
+                                                    .collect();
+                                                procedure.add_properties_to_scopes(&properties_vec);
+                                            }
 
                                             // __ Устанавливаем Scopes в процедуре
                                             procedure.set_scopes(&in_scope);
@@ -390,149 +440,206 @@ async fn main() -> Result<()> {
                                             parser.run(&procedure.expressions_node);
 
                                             // __ Парсим результат выполнения функции
-                                            let (result, rest) =  &procedure.set_results(&parser.scope);
+                                            let (result, rest) = &procedure.set_results(&parser.scope);
 
-                                            // __ Парсим выходные параметры. Здесь не надо, потому что не ищем материал
-                                            // &procedure.set_outputs(&parser.scope);
+                                            // __ Смотрим, это материал или категория. Если материал - возвращаем его
+                                            if material.is_material() {
+                                                // __ Если это материал - возвращаем его
 
+                                                // __ Дополняем Входящий Scope Материалов, если он есть
+                                                // if let Some(properties_map) = &material.properties_map_numeric {
+                                                //
+                                                //     // !!! Debug
+                                                //     println!("Material_property: {:?}", properties_map);
+                                                //
+                                                //     let properties_vec: Vec<(String, f64)> = properties_map
+                                                //         .iter()
+                                                //         .map(|(k, v)| (k.clone(), *v)) // Клонируем String, копируем f64
+                                                //         .collect();
+                                                //     procedure.add_properties_to_scopes(&properties_vec);
+                                                //
+                                                //     // properties_map
+                                                //     //     .iter()
+                                                //     //     .map(|(k, v)| in_scope.push((k.clone(), v.clone())));
+                                                //     // // in_scope = properties_map.iter()
+                                                //     // //     .map(|(k, v)| (k.clone(), *v))
+                                                //     // //     .collect();
+                                                // }
 
-                                            println!("---------->");
-                                            println!("{}: {} + {} {}", material.name, result, rest.unwrap_or_default(), &item.u.as_ref().unwrap_or(&String::new()));
-                                            println!("Scope: {:?}", parser.scope);
-                                            println!("Results: {:?}", procedure.returns_raw);
-                                            println!("Outputs: {:?}", procedure.outputs_raw);
-                                            println!("<----------");
+                                                // // __ Устанавливаем Scopes в процедуре
+                                                // procedure.set_scopes(&in_scope);
+                                                //
+                                                // // __ Сбрасываем парсер
+                                                // parser.reset();
+                                                //
+                                                // // __ Устанавливаем Scope в парсере
+                                                // parser.set_parser_in_scope(&procedure.parameters_raw, &procedure.properties_raw);
+                                                //
+                                                // // __ Запускаем Парсер
+                                                // parser.run(&procedure.expressions_node);
+                                                //
+                                                // // __ Парсим результат выполнения функции
+                                                // let (result, rest) = &procedure.set_results(&parser.scope);
 
-                                        } else {
-                                            // __ Если это категория - тогда ищем материал в базе
-                                            if procedure.properties_raw.len() == 0 {
-
-                                                // __ Устанавливаем Scopes в процедуре
-                                                procedure.set_scopes(&in_scope);
-
-                                                // __ Сбрасываем парсер
-                                                parser.reset();
-
-                                                // __ Устанавливаем Scope в парсере
-                                                parser.set_parser_in_scope(&procedure.parameters_raw, &procedure.properties_raw);
-
-                                                // __ Запускаем Парсер
-                                                parser.run(&procedure.expressions_node);
-
-                                                // __ Парсим результат выполнения функции
-                                                let (result, rest) =  &procedure.set_results(&parser.scope);
-
-                                                // __ Парсим выходные параметры, чтобы найти материал
-                                                &procedure.set_outputs(&parser.scope);
-
-                                                // __
-                                                // &procedure.un_raw_outputs();
-
-                                                // __ Ищем сам материал
-                                                let mut target_material: Option<Material> = None;
-                                                // __ Получаем категорию
-                                                if let Some(target_material_category) = materials_lookup.get(&material.code_1c) {
-                                                    // __ Перебираем все материалы в этой категории
-                                                    for (mat_code, mat) in target_material_category {
-                                                        // __ Задаем два сравнивающих массива
-                                                        if let Some(output_mat) = &mat.properties_map_numeric { // Свойства, которые есть в материале
-
-                                                            let output_mat_debug = output_mat.clone();
+                                                // __ Парсим выходные параметры. Здесь не надо, потому что не ищем материал
+                                                // &procedure.set_outputs(&parser.scope);
 
 
-                                                            // println!("==========");
-                                                            // println!("{:?}", output_mat);
-                                                            // println!("==========");
+                                                println!("Материал ---------->");
+                                                println!(
+                                                    "{}: {} + {} = {} {}",
+                                                    material.name,
+                                                    result,
+                                                    rest.unwrap_or_default(),
+                                                    result + rest.unwrap_or_default(),
+                                                    &item
+                                                        .u
+                                                        .as_ref()
+                                                        .unwrap_or(&String::new())
+                                                );
+                                                println!("Scope: {:?}", parser.scope);
+                                                println!("Results: {:?}", procedure.returns_raw);
+                                                println!("Outputs: {:?}", procedure.outputs_raw);
+                                                println!("<----------");
+                                            } else {
+                                                // __ Если это категория - тогда ищем материал в базе
+                                                if procedure.properties_raw.len() == 0 {
+                                                    // // __ Устанавливаем Scopes в процедуре
+                                                    // procedure.set_scopes(&in_scope);
+                                                    //
+                                                    // // __ Сбрасываем парсер
+                                                    // parser.reset();
+                                                    //
+                                                    // // __ Устанавливаем Scope в парсере
+                                                    // parser.set_parser_in_scope(&procedure.parameters_raw, &procedure.properties_raw);
+                                                    //
+                                                    // // __ Запускаем Парсер
+                                                    // parser.run(&procedure.expressions_node);
+                                                    //
+                                                    // // __ Парсим результат выполнения функции
+                                                    // let (result, rest) = &procedure.set_results(&parser.scope);
 
-                                                            let output_proc = &procedure.outputs; // Свойства, которые вернула процедура
+                                                    // __ Парсим выходные параметры, чтобы найти материал
+                                                    &procedure.set_outputs(&parser.scope);
 
-                                                            let output_mat_debug = output_mat.clone();
-                                                            let output_proc_debug = output_proc
-                                                                .clone()
-                                                                .iter()
-                                                                .map(|(k, v)| (k.clone(), v.clone()))
-                                                                .collect::<HashMap<String, f64>>();
+                                                    // __
+                                                    // &procedure.un_raw_outputs();
 
+                                                    // __ Ищем сам материал
+                                                    let mut target_material: Option<Material> = None;
+                                                    // __ Получаем категорию
+                                                    if let Some(target_material_category) = materials_lookup.get(&material.code_1c) {
+                                                        // __ Перебираем все материалы в этой категории
+                                                        for (mat_code, mat) in target_material_category {
+                                                            // __ Задаем два сравнивающих массива
+                                                            if let Some(output_mat) = &mat.properties_map_numeric {
+                                                                // Свойства, которые есть в материале
 
-
-                                                            // __ Сравниваем методом перебора.
-                                                            // __ Предполагаем, что количество свойств, которые вернула процедура
-                                                            // __ не больше, чем свойст у материала, поэотму внешний цикл по свойствам процедуры
-                                                            let mut is_find = true;
-                                                            for (proc_prop_key, proc_prop_value) in output_proc {
-
-                                                                let mut find_assign = false;
-                                                                for (mat_prop_key, mat_prop_value) in output_mat {
-
-                                                                    // if material.code_1c.eq("000017363") {
-                                                                    //     println!("?????");
-                                                                    // }
-                                                                    //
-                                                                    // println!("Keys equal: {}", *proc_prop_key.to_lowercase() == *mat_prop_key.to_lowercase());
-                                                                    // println!("Values equal: {}", (*proc_prop_value - *mat_prop_value).abs() < 1e-10);
+                                                                let output_mat_debug = output_mat.clone();
 
 
-                                                                    if *proc_prop_key.to_lowercase() == *mat_prop_key.to_lowercase() && (*proc_prop_value - *mat_prop_value).abs() < 1e-10 {
-                                                                        find_assign = true;
+                                                                // println!("==========");
+                                                                // println!("{:?}", output_mat);
+                                                                // println!("==========");
+
+                                                                let output_proc = &procedure.outputs; // Свойства, которые вернула процедура
+
+                                                                let output_mat_debug = output_mat.clone();
+                                                                let output_proc_debug = output_proc
+                                                                    .clone()
+                                                                    .iter()
+                                                                    .map(|(k, v)| (k.clone(), v.clone()))
+                                                                    .collect::<HashMap<String, f64>>();
+
+
+                                                                // __ Сравниваем методом перебора.
+                                                                // __ Предполагаем, что количество свойств, которые вернула процедура
+                                                                // __ не больше, чем свойст у материала, поэотму внешний цикл по свойствам процедуры
+                                                                let mut is_find = true;
+                                                                for (proc_prop_key, proc_prop_value) in output_proc {
+                                                                    let mut find_assign = false;
+                                                                    for (mat_prop_key, mat_prop_value) in output_mat {
+                                                                        // if material.code_1c.eq("000017363") {
+                                                                        //     println!("?????");
+                                                                        // }
+                                                                        //
+                                                                        // println!("Keys equal: {}", *proc_prop_key.to_lowercase() == *mat_prop_key.to_lowercase());
+                                                                        // println!("Values equal: {}", (*proc_prop_value - *mat_prop_value).abs() < 1e-10);
+
+
+                                                                        if *proc_prop_key.to_lowercase() == *mat_prop_key.to_lowercase()
+                                                                            && (*proc_prop_value - *mat_prop_value).abs() < 1e-10
+                                                                        {
+                                                                            find_assign = true;
+                                                                            break;
+                                                                        }
+                                                                        // is_find = false;
+                                                                        // break;
+                                                                    }
+                                                                    if !find_assign {
+                                                                        is_find = false;
                                                                         break;
                                                                     }
-                                                                    // is_find = false;
-                                                                    // break;
                                                                 }
-                                                                if !find_assign {
-                                                                    is_find = false;
+
+
+                                                                if is_find {
+                                                                    target_material = Some(mat.clone());
                                                                     break;
                                                                 }
                                                             }
-
-
-                                                            if is_find {
-                                                                target_material = Some(mat.clone());
-                                                                break;
-                                                            }
                                                         }
                                                     }
-                                                }
+
+                                                    println!("Категория +++++++++++>");
+                                                    if let Some(res_material) = target_material {
+                                                        println!(
+                                                            "{}: {} + {} = {} {}",
+                                                            res_material.name,
+                                                            result,
+                                                            rest.unwrap_or_default(),
+                                                            result + rest.unwrap_or_default(),
+                                                            &item
+                                                                .u
+                                                                .as_ref()
+                                                                .unwrap_or(&String::new())
+                                                        );
+                                                        println!("Процедура: {}", procedure.procedure.name);
+                                                        println!("Scope: {:?}", parser.scope);
+                                                        println!("Results: {:?}", procedure.returns_raw);
+                                                        println!("Outputs: {:?}", procedure.outputs);
+                                                    } else {
+                                                        println!("Материал не найден...");
+                                                        println!("Категория {:?}", material.name);
+                                                        println!("Scope: {:?}", parser.scope);
+                                                        println!("Outputs: {:?}", procedure.outputs);
+                                                    }
 
 
-                                                println!("+++++++++++>");
-                                                if let Some(res_material) = target_material {
-                                                    println!("{}: {} + {} {}", res_material.name, result, rest.unwrap_or_default(), &item.u.as_ref().unwrap_or(&String::new()));
-                                                    println!("Scope: {:?}", parser.scope);
-                                                    println!("Results: {:?}", procedure.returns_raw);
-                                                    println!("Outputs: {:?}", procedure.outputs);
+                                                    println!("<+++++++++++");
                                                 } else {
-                                                    println!("Материал не найден...");
+                                                    // !!! Debug
                                                     println!("Категория {:?}", material.name);
-                                                    println!("Scope: {:?}", parser.scope);
-                                                    println!("Outputs: {:?}", procedure.outputs);
+                                                    println!("Outputs: {:?}", procedure.outputs_raw);
                                                 }
 
-
-                                                println!("<+++++++++++");
-
-
-                                            } else {
-                                                println!("Категория {:?}", material.name);
-                                                println!("Outputs: {:?}", procedure.outputs_raw);
+                                                // println!("{:?}", material.clone().get_properties());
                                             }
+                                        } else {
+                                            // __ Нет процедуры
 
-
-
-                                            // println!("{:?}", material.clone().get_properties());
+                                            // !!! Debug
+                                            // let expense = order_line.amount as f64 * &item.a.unwrap_or(1.0);
+                                            // println!("{}: {} {}", material.name, expense, &item.u.as_ref().unwrap_or(&String::new()));
                                         }
-                                    } else {
-                                        // __ Нет процедуры
-                                        let expense = order_line.amount as f64 * &item.a.unwrap_or(1.0);
-                                        println!("{}: {} {}", material.name, expense, &item.u.as_ref().unwrap_or(&String::new()));
                                     }
                                 }
-                            }
 
-                            // if let Some(procedure_code) = &item.pc {
-                            //     procedures_unique.insert(procedure_code.clone());
-                            //     // procedures_unique.insert(procedure_code.clone(), (*item).clone().pn.unwrap());
-                            // }
+                                // if let Some(procedure_code) = &item.pc {
+                                //     procedures_unique.insert(procedure_code.clone());
+                                //     // procedures_unique.insert(procedure_code.clone(), (*item).clone().pn.unwrap());
+                                // }
+                            }
                         }
                     }
                 }
@@ -666,48 +773,33 @@ fn get_procedures_local() -> Vec<Procedure> {
 
     let text = String::from(
         r#"
-                Длина = [Матрас].[Длина];
-                Ширина = [Матрас].[Ширина];
-                // КОЭФФИЦИЕНТ отхода
-                ШиринаРулона = 2; // ширина рулона 2 м
-                К1 = 1.01;        // 1% отхода для матрасов / концевые остатки с рулона
-                К2 = 1.02;        // 2% отхода для форматок
-                // ОГРАНИЧЕНИЕ длины и ширины
-                Если Длина > 2 Тогда
-                    Длина = 2;
-                КонецЕсли;
-                Если Ширина > 2 Тогда
-                    Ширина = 2;
-                КонецЕсли;
-                // РАСХОД
-                [НастилМатериалы] = Ширина * Длина;
-                // ФОРМАТКА
-                Если Ширина = 0.26 и Длина = 0.37 Тогда		//ФОРМАТКА 26х37
-                    ЧислоНастил = Цел (ШиринаРулона/Длина);  // Ширина вдоль рулона
-                    ОбщийРасход = ШиринаРулона*Ширина/ЧислоНастил*К2;
-                    [НастилМатериалыОтход] = ОбщийРасход - [НастилМатериалы];
-                ИначеЕсли Ширина = 0.28 и Длина = 0.34 Тогда	//ФОРМАТКА 28х34
-                    ЧислоНастил = Цел (ШиринаРулона/Длина);  // Ширина вдоль рулона
-                    ОбщийРасход = ШиринаРулона*Ширина/ЧислоНастил*К2; //5 форматок 200 см
-                    [НастилМатериалыОтход] = ОбщийРасход - [НастилМатериалы];
-                ИначеЕсли Ширина = 0.28 и Длина = 0.44 Тогда	//ФОРМАТКА 28х44
-                    ЧислоНастил = Цел (ШиринаРулона/Ширина);  // Длина вдоль рулона
-                    ОбщийРасход = ШиринаРулона*Длина/ЧислоНастил*К2;
-                    [НастилМатериалыОтход] = ОбщийРасход - [НастилМатериалы];
-                // РУЛОН ПОПОЛАМ
-                ИначеЕсли Длина <= 1 Тогда
-                    ОбщийРасход = ШиринаРулона/2*Ширина*К1;
-                    [НастилМатериалыОтход] = ОбщийРасход - [НастилМатериалы];
-                // РАЗВОРОТ ОРИЕНТАЦИИ
-                ИначеЕсли Ширина <= 0.66 Тогда
-                    ЧислоНастил = Цел (ШиринаРулона/Ширина);  // Длина вдоль рулона
-                    ОбщийРасход = ШиринаРулона*Длина/ЧислоНастил*К1;
-                    [НастилМатериалыОтход] = ОбщийРасход - [НастилМатериалы];
-                // СТАНДАРТНАЯ ОРИЕНТАЦИЯ
-                Иначе
-                    ОбщийРасход = ШиринаРулона*Ширина*К1;
-                    [НастилМатериалыОтход] = ОбщийРасход - [НастилМатериалы];
-                КонецЕсли;
+            Длина = [Матрас].[Длина];
+            Ширина = [Матрас].[Ширина];
+            Высота = [Матрас].[Высота];
+            КоличествоСлоев = [ВысотаИзСпецификации];
+            Если не ЗначениеЗаполнено(КоличествоСлоев) Тогда
+                Предупреждение("Не задано количество слоев клея");
+            КонецЕсли;
+            // ПАРАМЕТРЫ
+            T1 = 0.055;  // коэф. расхода на 1 слой с 29.01.26 согласно замерам по Задача № 16597
+            // T1 = 0.066;  // коэф. расхода на 1 слой с 18.05.24 по данным ТО  в  Задача № 58202
+            // T1 = 0.055;  // коэф. расхода на 1 слой с 10.07.23 по данным ТО  в  Задача № 47624
+            // T1 = 0.06;  // коэф. расхода на 1 слой с 19.06.23 по данным ТО в  Задача № 47624
+            // T1 = 0.074;  // коэф. расхода на 1 слой с 29.07.22 в связи с рекламациями по смещению ПБ
+            К1 = 1;     // коэф. корректировки
+            // ОГРАНИЧЕНИЯ
+            Если Длина > 2 Тогда
+                Длина = 2;
+            КонецЕсли;
+            Если Ширина > 2 Тогда
+                Ширина = 2;
+            КонецЕсли;
+            // РАСХОД
+            Если Длина <= 0.44 Тогда
+                [Клей] = 0;
+            Иначе
+                [Клей] = Длина * Ширина * КоличествоСлоев * T1 * К1;
+            КонецЕсли;
             "#,
     );
 
@@ -729,30 +821,64 @@ fn get_code_string_() -> String {
         r#"
             Длина = [Матрас].[Длина];
             Ширина = [Матрас].[Ширина];
-
-            КоличествоСлоев = [ВысотаИзСпецификации];
-
-            Если не ЗначениеЗаполнено(КоличествоСлоев) Тогда
-                Предупреждение("Не задано количество слоев клея");
-            КонецЕсли;
-
-            T1 = 0.045 ;
-            К1 = 1;
-
-            Если Длина > 2 Тогда
-                Длина = 2;
-            КонецЕсли;
-            Если Ширина > 2 Тогда
-                Ширина = 2;
-            КонецЕсли;
-            Если Длина <= 0.44 Тогда
-                [Клей] = 0;
+            // ДЛИНА пружинного блока
+            [БлокПружинный].[Длина] = 1.87;
+            Если Длина < 1.7 Тогда
+                РабочаяДлина = Длина - 2*0.06;   // Борт 6 см
+            ИначеЕсли Длина < 1.76 Тогда
+                РабочаяДлина = 1.64;   // 28 пружин
+            ИначеЕсли Длина < 1.82 Тогда
+                РабочаяДлина = 1.69;  // 29 пружин
+            ИначеЕсли Длина < 1.88 Тогда
+                РабочаяДлина = 1.69;  // 29 пружин
+            ИначеЕсли Длина < 1.94 Тогда
+                РабочаяДлина = 1.75;  // 30 пружин
             Иначе
-                [Клей] = Длина * Ширина * КоличествоСлоев * T1 * К1;
+                РабочаяДлина = 1.87;  // Стандартная длина
             КонецЕсли;
-            [Клей].[Длина] = 1;
-            [Клей].[Ширина] = 2;
-            [Клей].[Высота] = 4;
+            // ШИРИНА пружинного блока
+            Если Ширина <= 0.59 Тогда
+                [БлокПружинный].[Ширина] = 0.67;
+                РабочаяШирина = Ширина - 2*0.06;
+            ИначеЕсли Ширина <= 0.63 Тогда
+                [БлокПружинный].[Ширина] = 0.67;
+                РабочаяШирина = 0.49;	// 8 пружин
+            ИначеЕсли Ширина <= 0.69 Тогда
+                [БлокПружинный].[Ширина] = 0.67;
+                РабочаяШирина = 0.55;	// 9 пружин
+            ИначеЕсли Ширина <= 0.81 Тогда
+                [БлокПружинный].[Ширина] = 0.67;
+                РабочаяШирина = 0.67;	// 11 пружин
+            ИначеЕсли Ширина <= 0.91 Тогда
+                [БлокПружинный].[Ширина] = 0.77;
+                РабочаяШирина = 0.77;	// 12 пружин
+            ИначеЕсли Ширина <= 1.08 Тогда
+                [БлокПружинный].[Ширина] = 0.87;
+                РабочаяШирина = 0.87;	// 14 пружин
+            ИначеЕсли Ширина <= 1.28 Тогда
+                [БлокПружинный].[Ширина] = 1.07;
+                РабочаяШирина = 1.07;	// 17 пружин
+            ИначеЕсли Ширина <= 1.48 Тогда
+                [БлокПружинный].[Ширина] = 1.27;
+                РабочаяШирина = 1.27;	// 20 пружин
+            ИначеЕсли Ширина <= 1.68 Тогда
+                [БлокПружинный].[Ширина] = 1.47;
+                РабочаяШирина = 1.47;	// 23 пружин
+            ИначеЕсли Ширина <= 1.87 Тогда
+                [БлокПружинный].[Ширина] = 1.67;
+                РабочаяШирина = 1.67;	// 26 пружин
+            Иначе
+                [БлокПружинный].[Ширина] = 1.87;
+                РабочаяШирина = 1.87;	// 29 пружин
+            КонецЕсли;
+            // РАСЧЕТ
+            [БлокПружинный] = (РабочаяДлина * РабочаяШирина)/([БлокПружинный].[Длина] * [БлокПружинный].[Ширина]);
+            [БлокПружинныйОтход] = 1 - [БлокПружинный];
+            // ФОРМАТКА
+            Если Ширина <= 0.28 Тогда
+                [БлокПружинный] = 0;
+                [БлокПружинныйОтход] = 0;
+            КонецЕсли;
         "#,
     )
     // String::from(

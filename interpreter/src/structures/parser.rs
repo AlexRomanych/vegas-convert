@@ -353,10 +353,17 @@ impl Parser {
                 .parse::<f64>()
                 .unwrap_or(0.0),
             ExpressionNode::Variable(token) => {
-                if let Some(value) = self.in_scope.get(&token.text) {
+                // !!! __ Лезем сначала во внутренний scope
+                if let Some(value) = self.scope.get(&token.text) {
                     return *value;
                 }
-                *self.scope.get(&token.text).expect(&format!("Переменная {} не найдена", token.text))
+                // !!! __ И только потом во внешний scope
+                *self.in_scope.get(&token.text).expect(&format!("Переменная {} не найдена", token.text))
+
+                // if let Some(value) = self.in_scope.get(&token.text) {
+                //     return *value;
+                // }
+                // *self.scope.get(&token.text).expect(&format!("Переменная {} не найдена", token.text))
             },
             ExpressionNode::BinOperation { operator, left, right } => {
                 let l_val = self.run(left);

@@ -19,8 +19,8 @@ pub struct ParsedProcedure {
     pub in_scope:         HashMap<String, f64>,  // Входные параметры, которые не меняются в процессе расчетов
     pub out_scope:        HashMap<String, f64>,  // Все переменные, которые получились в результате расчетов в процедуре
 
-    pub has_properties: bool, // __ Есть ли свойства: [НастилМатериалы].{Плотность}
-    pub has_parameters: bool, // __ Есть ли параметры: Ширина = [Матрас].[Ширина]
+    // pub has_properties: bool, // __ Есть ли свойства: [НастилМатериалы].{Плотность}
+    // pub has_parameters: bool, // __ Есть ли параметры: Ширина = [Матрас].[Ширина]
 }
 
 impl ParsedProcedure {
@@ -77,7 +77,20 @@ impl ParsedProcedure {
 
     // __ Устанавливаем входные Scopes
     pub fn set_scopes(&mut self, scopes: &Vec<(String, f64)>) {
-        for (var, val) in scopes {
+
+        // __ Сортируем по убыванию, чтобы "ВысотаИзСпецификации" была раньше "Высота"
+        // __ чтобы корректно отрабатывал contains
+        let mut sorted_scope = scopes.clone();
+        sorted_scope.sort_by(|a, b| b.0.cmp(&a.0));
+
+        // __ Обнуляем Параметры
+        self.parameters_raw.iter_mut().for_each(|(k, v)| {*v = 0.0});
+
+        // for (k, v) in self.parameters_raw.iter_mut() {
+        //     *v = 0.0;   // Обнуляем
+        //     }
+
+        for (var, val) in &sorted_scope {
             // __ Вставляем входные параметры
             if let Some(v) = self.parameters.get(var) {
                 self.parameters
@@ -85,18 +98,47 @@ impl ParsedProcedure {
             }
 
             // __ !!! Работаем с этим набором данных
-            // __ Вставляем входные параметры в оригинальные названия парметров после паринга токенов [Матрас].[Длина]
+            // __ Вставляем входные параметры в оригинальные названия парметров после парсинга токенов [Матрас].[Длина]
             // __ Приходят только в виде вектора кортежей ("Длина", 2.0)
             for (k, v) in self.parameters_raw.iter_mut() {
-                *v = 0.0;   // Обнуляем
-                for (parameter, value) in scopes {
-                    if k.contains(parameter) {
-                        *v = *value;
-                        break;
-                    }
+                // *v = 0.0;   // Обнуляем
+                if k.contains(var) && *v == 0.0 {
+                    *v = *val;
+                    break;
                 }
+
+                // for (parameter, value) in scopes {
+                //     if k.contains(parameter) {
+                //         *v = *value;
+                //         break;
+                //     }
+                // }
             }
 
+            // // __ Вставляем входные свойства
+            // if let Some(v) = self.properties.get(var) {
+            //     self.properties
+            //         .insert(var.clone(), *val);
+            // }
+            //
+            // // __ !!! Работаем с этим набором данных
+            // // __ Вставляем входные свойства в оригинальные названия парметров после парсинга токенов [Матрас].[Длина]
+            // // __ Приходят только в виде вектора кортежей ("Длина", 2.0)
+            // for (k, v) in self.properties_raw.iter_mut() {
+            //     *v = 0.0;   // Обнуляем
+            //     for (parameter, value) in scopes {
+            //         if k.contains(parameter) {
+            //             *v = *value;
+            //             break;
+            //         }
+            //     }
+            // }
+        }
+    }
+
+    // __ Добавляем свойства материала в скоуп
+    pub fn add_properties_to_scopes(&mut self, scopes: &Vec<(String, f64)>) {
+        for (var, val) in scopes {
             // __ Вставляем входные свойства
             if let Some(v) = self.properties.get(var) {
                 self.properties
@@ -104,7 +146,7 @@ impl ParsedProcedure {
             }
 
             // __ !!! Работаем с этим набором данных
-            // __ Вставляем входные свойства в оригинальные названия парметров после паринга токенов [Матрас].[Длина]
+            // __ Вставляем входные свойства в оригинальные названия парметров после парсинга токенов [Матрас].[Длина]
             // __ Приходят только в виде вектора кортежей ("Длина", 2.0)
             for (k, v) in self.properties_raw.iter_mut() {
                 *v = 0.0;   // Обнуляем
@@ -117,6 +159,8 @@ impl ParsedProcedure {
             }
         }
     }
+
+
 
     // __ Получаем итоговые результаты: результат вычислений + отход и заполняем соответствующий массив
     // TODO: Переделать поиск по полю object_name - [БлокПружинный] и [БлокПружинныйОтход]
