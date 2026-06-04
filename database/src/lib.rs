@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use dotenvy::dotenv;
 use sqlx::postgres::PgPoolOptions;
 use std::env;
-use sqlx::{Pool, Postgres};
+use sqlx::{Pool, Postgres, Transaction};
 
 /// **Соединяемся с базой**
 pub async fn connect() -> Result<Pool<Postgres>> {
@@ -18,4 +18,11 @@ pub async fn connect() -> Result<Pool<Postgres>> {
         .context("Ошибка соединения с базой данных")?;
 
     Ok(pool)
+}
+
+
+/// **Возвращаем транзакцию**
+pub async fn transaction<'a>(pool: &'a Pool<Postgres>) -> Result<Transaction<'a, Postgres>> {
+    let tx = pool.begin().await?;
+    Ok(tx)
 }

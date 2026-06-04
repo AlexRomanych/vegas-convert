@@ -9,18 +9,18 @@ pub struct ParsedProcedure {
     pub tokens:           Vec<Token>,
     pub expressions_node: ExpressionNode,
     pub returns_raw:      HashMap<String, f64>,
-    pub returns:          HashMap<String, f64>,
+    // pub returns:          HashMap<String, f64>,
     pub properties_raw:   HashMap<String, f64>, // raw - это сырые значения: [Матрас].[Длина]
-    pub properties:       HashMap<String, f64>, // Без raw - это значения без [] и родителя: Длина
+    // pub properties:       HashMap<String, f64>, // Без raw - это значения без [] и родителя: Длина
     pub parameters_raw:   HashMap<String, f64>,
-    pub parameters:       HashMap<String, f64>,
+    // pub parameters:       HashMap<String, f64>,
     pub outputs_raw:      BTreeMap<String, f64>, // В отсортированном порядке
     pub outputs:          BTreeMap<String, f64>, // Выходные параметры в отсортированном порядке
     pub in_scope:         HashMap<String, f64>,  // Входные параметры, которые не меняются в процессе расчетов
     pub out_scope:        HashMap<String, f64>,  // Все переменные, которые получились в результате расчетов в процедуре
 
-    // pub has_properties: bool, // __ Есть ли свойства: [НастилМатериалы].{Плотность}
-    // pub has_parameters: bool, // __ Есть ли параметры: Ширина = [Матрас].[Ширина]
+                                                 // pub has_properties: bool, // __ Есть ли свойства: [НастилМатериалы].{Плотность}
+                                                 // pub has_parameters: bool, // __ Есть ли параметры: Ширина = [Матрас].[Ширина]
 }
 
 impl ParsedProcedure {
@@ -37,10 +37,10 @@ impl ParsedProcedure {
 
     // __ Очищаем от скобочек [] то, что нашли
     pub fn un_raw(&mut self) {
-        self.returns = Self::process_list(&self.returns_raw);
-        self.properties = Self::process_list(&self.properties_raw);
-        self.parameters = Self::process_list(&self.parameters_raw);
-        self.outputs = Self::process_list(&self.outputs_raw);
+    //     // self.returns = Self::process_list(&self.returns_raw);
+    //     // self.properties = Self::process_list(&self.properties_raw);
+    //     // self.parameters = Self::process_list(&self.parameters_raw);
+        // self.outputs = Self::process_list(&self.outputs_raw);
     }
 
     // __ Очищаем от скобочек [] выходные параметры
@@ -76,15 +76,17 @@ impl ParsedProcedure {
     }
 
     // __ Устанавливаем входные Scopes
-    pub fn set_scopes(&mut self, scopes: &Vec<(String, f64)>) {
-
+    // __ Передаем object_name, чтобы удалить их из parameters_raw, которые туда залетают припарсинге процедуры
+    pub fn set_scopes(&mut self, scopes: &Vec<(String, f64)>, /*object_name: &str*/) {
         // __ Сортируем по убыванию, чтобы "ВысотаИзСпецификации" была раньше "Высота"
         // __ чтобы корректно отрабатывал contains
         let mut sorted_scope = scopes.clone();
         sorted_scope.sort_by(|a, b| b.0.cmp(&a.0));
 
         // __ Обнуляем Параметры
-        self.parameters_raw.iter_mut().for_each(|(k, v)| {*v = 0.0});
+        self.parameters_raw
+            .iter_mut()
+            .for_each(|(k, v)| *v = 0.0);
 
         // for (k, v) in self.parameters_raw.iter_mut() {
         //     *v = 0.0;   // Обнуляем
@@ -92,10 +94,10 @@ impl ParsedProcedure {
 
         for (var, val) in &sorted_scope {
             // __ Вставляем входные параметры
-            if let Some(v) = self.parameters.get(var) {
-                self.parameters
-                    .insert(var.clone(), *val);
-            }
+            // if let Some(v) = self.parameters.get(var) {
+            //     self.parameters
+            //         .insert(var.clone(), *val);
+            // }
 
             // __ !!! Работаем с этим набором данных
             // __ Вставляем входные параметры в оригинальные названия парметров после парсинга токенов [Матрас].[Длина]
@@ -140,16 +142,16 @@ impl ParsedProcedure {
     pub fn add_properties_to_scopes(&mut self, scopes: &Vec<(String, f64)>) {
         for (var, val) in scopes {
             // __ Вставляем входные свойства
-            if let Some(v) = self.properties.get(var) {
-                self.properties
-                    .insert(var.clone(), *val);
-            }
+            // if let Some(v) = self.properties.get(var) {
+            //     self.properties
+            //         .insert(var.clone(), *val);
+            // }
 
             // __ !!! Работаем с этим набором данных
             // __ Вставляем входные свойства в оригинальные названия парметров после парсинга токенов [Матрас].[Длина]
             // __ Приходят только в виде вектора кортежей ("Длина", 2.0)
             for (k, v) in self.properties_raw.iter_mut() {
-                *v = 0.0;   // Обнуляем
+                *v = 0.0; // Обнуляем
                 for (parameter, value) in scopes {
                     if k.contains(parameter) {
                         *v = *value;
@@ -159,7 +161,6 @@ impl ParsedProcedure {
             }
         }
     }
-
 
 
     // __ Получаем итоговые результаты: результат вычислений + отход и заполняем соответствующий массив
@@ -179,7 +180,6 @@ impl ParsedProcedure {
                 } else {
                     procedure_result = *value;
                 }
-
             }
         }
         (procedure_result, procedure_rest)
@@ -196,6 +196,4 @@ impl ParsedProcedure {
 
         Self::un_raw_outputs(self);
     }
-
-
 }

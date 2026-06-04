@@ -3,10 +3,12 @@ pub mod structures;
 use crate::structures::material::Material;
 use anyhow::Result;
 use constants::MATERIALS_TABLE_NAME;
+use regex::Regex;
+use serde_json::Value;
 use sqlx::PgPool;
+use sqlx::types::Json;
 use std::collections::HashMap;
-use std::sync::OnceLock;
-
+use std::sync::{LazyLock, OnceLock};
 
 static MATERIALS_TABLE: OnceLock<HashMap<String, Material>> = OnceLock::new();
 static QUERY_GET_MATERIALS: OnceLock<String> = OnceLock::new();
@@ -139,4 +141,67 @@ pub async fn get_materials_lookup() -> Result<HashMap<String, HashMap<String, Ma
     // }
 
     Ok(materials_lookup)
+}
+
+
+
+// __ Задаем недостающие свойства материалам
+pub fn parse_ppu_density_static(code: &str) -> f64 {
+    match code {
+        "000042336" => 18.0, //	ППУ 1825 конв толщ 2 см
+        "000040710" => 20.0, //	ППУ 2036
+        "000000698" => 22.0, //	ППУ 2240
+        "000000691" => 25.0, //	ППУ 2540
+        "000019784" => 28.0, //	ППУ 2836
+        "000035758" => 50.0, //	ППУ 5015
+        "000038358" => 35.0, //	ППУ HR(3530) конв толщ 3,2 см
+        "000018716" => 35.0, //	ППУ HR3530
+        "000039872" => 35.0, //	ППУ HR3530 синебел
+        "000019088" => 40.0, //	ППУ HR4026
+        "000019108" => 50.0, //	ППУ LL5020
+        "000044793" => 50.0, //	ППУ LL5020 Gel
+        "000031819" => 40.0, //	ППУ LR4020 толщ 1 см
+        "000002062" => 45.0, //	ППУ LR4509 (ViscoGel)
+        "000000672" => 50.0, //	ППУ VE5015 толщ 3 см
+        "000018641" => 50.0, //	ППУ VE5015 толщ 6 см
+        "000044345" => 22.0, //	ППУ деталь 2240 (Sandnes)
+        _ => 0.0,
+    }
+}
+
+// __ Задаем недостающие свойства материалам через динамику
+pub fn parse_ppu_density_dynamic(name: &str) -> Option<u32> {
+    // Регулярное выражение ищет ПЕРВУЮ встречную группу ровно из 2 цифр (\d{2}),
+    // перед которой могут быть буквы марки, но которая является началом блока цифр.
+    static PPU_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b[A-Za-zА-Яа-я]*(\d{2})\d*").unwrap());
+
+    // Ищем совпадение и берем первую захваченную группу (капчу)
+    PPU_REGEX
+        .captures(name)
+        .and_then(|cap| cap.get(1))
+        .and_then(|m| m.as_str().parse::<u32>().ok())
+}
+
+// __ Добавляем недостающие свойства (например плотность в ППУ)
+pub fn add_properties(materals: &mut HashMap<String, Material>) {
+    for (code_1c, material) in materals.iter_mut() {
+        if (material.is_category() && material.name.contains("ППУ ")) {
+            let density = parse_ppu_density_static(code_1c);
+            if density != 0.0 {
+                // 1. Безопасно получаем мутабельную ссылку на внутреннюю HashMap.
+                // Если там был None, get_or_insert_with создаст новую мапу и обернет её в Json.
+                let Json(map) = material
+                    .properties
+                    .get_or_insert_with(|| Json(HashMap::new()));
+
+                // 2. Добавляем новые свойства.
+                // Важно: значения должны быть приведены к типу serde_json::Value
+                map.insert("Плотность".to_string(), Value::from(density.to_string()));
+                map.insert("ВидОбъекта".to_string(), Value::from("НастилМатериалы"));
+                
+                material.set_properties_map();
+                material.set_properties_map_numeric();
+            }
+        }
+    }
 }

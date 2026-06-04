@@ -448,13 +448,13 @@ impl Parser {
             },
             ExpressionNode::FunctionCall{ name, args } => {
                 match name.text.as_str() {
-                    "Окр" => {
+                    "Окр" | "ОКР" => {
                         let value = self.run(&args[0]);
                         let digits = if args.len() > 1 { self.run(&args[1]) as i32 } else { 0 };
                         let factor = 10.0_f64.powi(digits);
                         (value * factor).round() / factor
                     },
-                    "Цел" => {
+                    "Цел" | "ЦЕЛ" => {
                         // Получаем значение первого аргумента
                         let value = if let Some(first_arg) = args.get(0) {
                             self.run(first_arg)

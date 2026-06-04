@@ -7,9 +7,11 @@ pub struct ItemDetail {
     pub mc: Option<String>, // material_code
     pub pc: Option<String>, // procedure_code
     pub pn: Option<String>, // procedure_name
-    pub h:  Option<f64>,    // height (используй f64 для размеров)
+    pub h:  Option<f64>,    // detail_height (используй f64 для размеров)
     pub a:  Option<f64>,    // amount
     pub u:  Option<String>, // единица измерения    
+    pub d:  Option<String>, // деталь
+    pub p:  Option<i16>,    // position
 }
 
 // Средний уровень: Конструкция
