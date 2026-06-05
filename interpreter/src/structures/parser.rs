@@ -70,6 +70,7 @@ impl Parser {
         match self.match_token(token_types) {
             Some(token) => token,
             None => {
+                // TODO: Обработать ошибку
                 println!("Токен: {:?}", self.tokens[self.pos]);
                 panic!("На позиции {} ожидается {:?}", self.pos, token_types)
             },

@@ -183,9 +183,9 @@ pub fn parse_ppu_density_dynamic(name: &str) -> Option<u32> {
 }
 
 // __ Добавляем недостающие свойства (например плотность в ППУ)
-pub fn add_properties(materals: &mut HashMap<String, Material>) {
-    for (code_1c, material) in materals.iter_mut() {
-        if (material.is_category() && material.name.contains("ППУ ")) {
+pub fn add_properties(materials: &mut HashMap<String, Material>) {
+    for (code_1c, material) in materials.iter_mut() {
+        if material.is_category() && material.name.contains("ППУ ") {
             let density = parse_ppu_density_static(code_1c);
             if density != 0.0 {
                 // 1. Безопасно получаем мутабельную ссылку на внутреннюю HashMap.
