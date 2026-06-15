@@ -6,6 +6,7 @@ use calamine::{Reader, Xlsx, open_workbook};
 use sqlx::{PgPool, Postgres, Transaction};
 use std::collections::HashMap;
 use std::sync::OnceLock;
+use sqlx::AssertSqlSafe; // Не забываем импортировать обертку безопасности
 
 // __ Создаем "ленивое" хранилище
 static KEYS_MATRIX: OnceLock<HashMap<&str, &str>> = OnceLock::new();
@@ -132,7 +133,7 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: 
         );
 
         // __ Выполняем вставку с обновлением при конфликте
-        sqlx::query(&query_str)
+        sqlx::query(AssertSqlSafe(query_str.as_str()))
             .bind(&procedure.code_1c)
             .bind(&procedure.name)
             .bind(&procedure.text)

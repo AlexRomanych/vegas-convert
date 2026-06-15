@@ -5,14 +5,17 @@ edition = "2024"
 
 [dependencies]
 serde = "1.0.228"
-sqlx = { version = "0.9.0-alpha.1", features = [
-    "runtime-tokio", # Указываем рантайм
-    "tls-rustls", # Указываем библиотеку TLS отдельно
-    "postgres",
-    "chrono",
-    "macros",
-    "rust_decimal",
-] }
+
+sqlx = { version = "0.9.0", features = [ "postgres", "runtime-tokio", "macros", "chrono" ] }
+
+#sqlx = { version = "0.9.0-alpha.1", features = [
+#    "runtime-tokio", # Указываем рантайм
+#    "tls-rustls", # Указываем библиотеку TLS отдельно
+#    "postgres",
+#    "chrono",
+#    "macros",
+#    "rust_decimal",
+#] }
 
 
 anyhow = "1.0.102"

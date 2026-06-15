@@ -10,4 +10,5 @@ pub struct OrderLine {
     length: i16,
     height: i16,
     amount: i32,
+    specification: Option<String>,
 }

@@ -78,10 +78,10 @@ pub async fn get_materials_pool(pool: &PgPool) -> Result<HashMap<String, Materia
 // __ Таким образом, сам Материал будет искаться по свойствам материала, который находится
 // __ в соответсвующей ему Категории (родитель), которая и указывается в спецификации
 // __ и будем туда запихивать материалы у которых есть свойства
-pub async fn get_materials_lookup() -> Result<HashMap<String, HashMap<String, Material>>> {
+pub async fn get_materials_lookup(pool: &PgPool) -> Result<HashMap<String, HashMap<String, Material>>> {
     let mut materials_lookup: HashMap<String, HashMap<String, Material>> = HashMap::new();
 
-    let materials = get_materials().await?;
+    let materials = get_materials_pool(&pool).await?;
     for (code, material) in materials {
         if material.is_material() && material.properties.is_some() {
             if let Some(category_code) = &material.material_category_code_1c {

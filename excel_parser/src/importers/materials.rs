@@ -7,7 +7,7 @@ use calamine::{Reader, Xlsx, open_workbook};
 use serde_json::Value;
 use sqlx::{Postgres, Transaction, types::Json, PgPool};
 use std::collections::HashMap;
-
+use sqlx::AssertSqlSafe; // Не забываем импортировать обертку безопасности
 
 pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: &PgPool) -> Result<()> {
     // __ Очищает данные и сбрасывает счетчики ID (SERIAL) в начальное состояние
@@ -140,36 +140,36 @@ pub async fn store_item(material: &mut Material, tx: &mut Transaction<'_, Postgr
     // __ Создаем строку запроса динамически
     let query_str = format!(
         r#"
-    INSERT INTO {} (
-        code_1c, code_1c_copy,
-        material_group_code_1c, material_category_code_1c,
-        name, unit, supplier,
-        object_name, properties,
-        created_at, updated_at,
-        is_modify
-    )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW(), true)
-    ON CONFLICT (code_1c) DO UPDATE SET
-        name = EXCLUDED.name,
-        unit = EXCLUDED.unit,
-        supplier = EXCLUDED.supplier,
-        object_name = EXCLUDED.object_name,
-        properties = EXCLUDED.properties,
-        material_group_code_1c = EXCLUDED.material_group_code_1c,
-        material_category_code_1c = EXCLUDED.material_category_code_1c,
-        updated_at = NOW(),
+            INSERT INTO {} (
+                code_1c, code_1c_copy,
+                material_group_code_1c, material_category_code_1c,
+                name, unit, supplier,
+                object_name, properties,
+                created_at, updated_at,
+                is_modify
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW(), true)
+            ON CONFLICT (code_1c) DO UPDATE SET
+                name = EXCLUDED.name,
+                unit = EXCLUDED.unit,
+                supplier = EXCLUDED.supplier,
+                object_name = EXCLUDED.object_name,
+                properties = EXCLUDED.properties,
+                material_group_code_1c = EXCLUDED.material_group_code_1c,
+                material_category_code_1c = EXCLUDED.material_category_code_1c,
+                updated_at = NOW(),
 
-        -- Умное обновление флага:
-        -- Если старое значение в базе отличается от нового из Excel, ставим true.
-        -- В противном случае оставляем то, что уже было в базе (false).
-        is_modify = CASE
-            WHEN {}.material_group_code_1c IS DISTINCT FROM EXCLUDED.material_group_code_1c
-              OR {}.material_category_code_1c IS DISTINCT FROM EXCLUDED.material_category_code_1c
-            THEN true
-            ELSE {}.is_modify
-        END
-    -- Условие WHERE здесь можно оставить широким (чтобы обновлялись тексты/свойства),
-    -- либо убрать совсем, так как логика флага теперь живет в CASE.
+                -- Умное обновление флага:
+                -- Если старое значение в базе отличается от нового из Excel, ставим true.
+                -- В противном случае оставляем то, что уже было в базе (false).
+                is_modify = CASE
+                    WHEN {}.material_group_code_1c IS DISTINCT FROM EXCLUDED.material_group_code_1c
+                      OR {}.material_category_code_1c IS DISTINCT FROM EXCLUDED.material_category_code_1c
+                    THEN true
+                    ELSE {}.is_modify
+                END
+            -- Условие WHERE здесь можно оставить широким (чтобы обновлялись тексты/свойства),
+            -- либо убрать совсем, так как логика флага теперь живет в CASE.
     "#,
         Material::MATERIALS_TABLE_NAME,
         Material::MATERIALS_TABLE_NAME,
@@ -245,7 +245,8 @@ pub async fn store_item(material: &mut Material, tx: &mut Transaction<'_, Postgr
     // );
 
     // __ Выполняем вставку материала с обновлением при конфликте
-    sqlx::query(&query_str)
+    // __ Заворачиваем ссылку на срез строки в AssertSqlSafe
+    sqlx::query(AssertSqlSafe(query_str.as_str()))
         .bind(&material.code_1c)
         .bind(&material.code_1c)
         .bind(&material.material_group_code_1c)
@@ -269,7 +270,7 @@ pub async fn store_item(material: &mut Material, tx: &mut Transaction<'_, Postgr
 pub async fn reset_modify_flag(tx: &mut Transaction<'_, Postgres>) -> Result<()> {
     let query = format!("UPDATE {} SET is_modify = false", Material::MATERIALS_TABLE_NAME);
 
-    sqlx::query(&query)
+    sqlx::query(AssertSqlSafe(query.as_str()))
         .execute(&mut **tx)
         .await?;
 

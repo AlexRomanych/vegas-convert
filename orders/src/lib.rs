@@ -27,7 +27,7 @@ pub async fn get_order_with_lines(pool: &sqlx::PgPool, order_id: i64) -> Result<
 
     let query = SQL_QUERY_ORDER_LINES.get_or_init(|| {
         format!(
-            r#"SELECT id, model_code_1c, size, width, length, height, amount FROM {} WHERE order_id = $1"#,
+            r#"SELECT id, model_code_1c, size, width, length, height, amount, specification FROM {} WHERE order_id = $1"#,
             ORDER_LINES_TABLE_NAME
         )
     });
@@ -63,6 +63,91 @@ pub async fn get_order_data_tree_pool(pool: &sqlx::PgPool, order_ids: HashSet<i6
         .collect::<Vec<_>>()
         .join(", ");
 
+    // __ Спецификация берется из строки (order_line: construct_code_1c) и возвращается не в виде масства, а в виде объекта
+    let query = MAIN_QUERY.get_or_init(|| {
+        format!(
+            r#"
+                SELECT
+                    o.id AS order_id,
+                    ol.id AS line_id,
+                    ol.width AS width,
+                    ol.length AS length,
+                    ol.height AS height,
+                    ol.amount AS amount,
+                    ol.construct_code_1c AS spec_code_1c, 	-- Спецификация в order_line, по которой происходит расчет (можно комментировать)
+                    m.code_1c AS model_code,				-- Код модели из 1С (можно комментировать)
+                    m.name AS model_name,					-- Название модели (можно комментировать)
+                    m.base_height AS base_height,
+                    m.cover_height AS cover_height,
+
+                    -- 1. БАЗОВАЯ ЧАСТЬ (base)
+                    -- Теперь ищем конструкцию напрямую по ol.construct_code_1c, минуя m.code_1c
+                    (
+                        -- SELECT JSON_AGG() - выдает массив
+                        -- SELECT JSON_BUILD_OBJECT() - выдает объект
+                        SELECT JSON_BUILD_OBJECT(
+                            'construct_code', mc.code_1c,
+                            'items', (
+                                SELECT JSON_AGG(JSON_BUILD_OBJECT(
+                                    'mc', mci.material_code_1c,
+                                    'pc', mci.procedure_code_1c,
+                                    'pn', mci.procedure_name,
+                                    'h', mci.detail_height,
+                                    'a', mci.amount,
+                                    'u', mci.material_unit,
+                                    'p', mci.position,
+                                    'd', mci.detail
+                                ))
+                                FROM model_construct_items mci
+                                WHERE mci.construct_code_1c = mc.code_1c
+                            )
+                        )
+                        FROM model_constructs mc
+                        -- Тут Спецификация привязана напрямую к строке заказа
+                        WHERE mc.code_1c = ol.construct_code_1c -- СВЯЗЬ НАПРЯМУЮ С КОРНЕВОЙ СТРОКОЙ ЗАКАЗА
+                        -- Тут Спецификация привязана к ссылке на спецификацию в Модели
+                        -- WHERE mci.construct_code_1c = mc.code_1c
+                    ) AS base,
+
+                    -- 2. Чехол (cover)
+                    -- Осталась без изменений, так как завязана на код чехла из модели m.cover_code_1c
+                    (
+                        -- SELECT JSON_AGG() - выдает массив
+                        -- SELECT JSON_BUILD_OBJECT() - выдает объект
+                        SELECT JSON_BUILD_OBJECT(
+                            'construct_code', mcc.code_1c,
+                            'items', (
+                                SELECT JSON_AGG(JSON_BUILD_OBJECT(
+                                    'mc', mcic.material_code_1c,
+                                    'pc', mcic.procedure_code_1c,
+                                    'pn', mcic.procedure_name,
+                                    'h', mcic.detail_height,
+                                    'a', mcic.amount,
+                                    'u', mcic.material_unit,
+                                    'p', mcic.position,
+                                    'd', mcic.detail
+                                ))
+                                FROM model_construct_items mcic
+                                WHERE mcic.construct_code_1c = mcc.code_1c
+                            )
+                        )
+                        FROM models m_cover
+                        JOIN model_constructs mcc ON mcc.model_code_1c = m_cover.code_1c
+                        -- Тут Спецификация привязана к ссылке на спецификацию Чехла в Модели
+                        WHERE m_cover.code_1c = m.cover_code_1c
+                    ) AS cover
+                FROM orders AS o
+                JOIN order_lines ol ON ol.order_id = o.id
+                JOIN models m ON m.code_1c = ol.model_code_1c
+                WHERE o.id IN ({})
+                ORDER BY ol.id;
+            "#,
+            list
+        )
+    });
+
+    /*
+    // __ Запрос, где спецификация бралась из модели и возвращалась в виде массива
     let query = MAIN_QUERY.get_or_init(|| {
         format!(
             r#"
@@ -137,8 +222,7 @@ pub async fn get_order_data_tree_pool(pool: &sqlx::PgPool, order_ids: HashSet<i6
             list
         )
     });
-
-
+*/
     let rows = sqlx::query_as::<_, OrderProcessRow>(query.as_str())
         // .bind(list)
         .fetch_all(pool)

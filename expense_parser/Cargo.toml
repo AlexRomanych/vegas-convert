@@ -1,0 +1,22 @@
+[package]
+name = "expense_parser"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.102"
+#log = "0.4.32"
+#regex = "1.12.4"
+tokio = { version = "1.52.1", features = ["full"] }
+
+database = { path = "../database" }
+orders = { path = "../orders" }
+procedures = { path = "../procedures" }
+materials = { path = "../materials" }
+interpreter = { path = "../interpreter" }
+logger = { path = "../logger" }
+sqlx = "0.9.0"
+
+# Работа с JSON
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

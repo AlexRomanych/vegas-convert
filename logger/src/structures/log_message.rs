@@ -1,11 +1,11 @@
-use anyhow::{Result};
+use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value; // __ Если ты сам определяешь LogLevel, импорт не нужен, но обычно делают так
 use sqlx::types::Json; // __ Если Json берется из sqlx (для автоматического маппинга в PostgreSQL)
-use sqlx::{PgPool};
 use std::fmt;
 use std::fmt::Display;
+// use sqlx::{PgPool};
 
 // __ Модуль ошибки
 #[derive(Serialize, Deserialize, Debug, sqlx::Type)]
@@ -14,6 +14,7 @@ pub enum LogTarget {
     Default,
     ModelsUpdate,
     Compiler,
+    Expense,
 }
 
 impl Display for LogTarget {
@@ -22,6 +23,7 @@ impl Display for LogTarget {
             LogTarget::Default => write!(f, "default"),
             LogTarget::ModelsUpdate => write!(f, "update_models"),
             LogTarget::Compiler => write!(f, "compile_procedures"),
+            LogTarget::Expense => write!(f, "parse_expense"),
         }
     }
 }
@@ -38,6 +40,7 @@ impl From<LogTarget> for String {
             LogTarget::Default => String::from("default"),
             LogTarget::ModelsUpdate => String::from("update_models"),
             LogTarget::Compiler => String::from("compile_procedures"),
+            LogTarget::Expense => String::from("parse_expense"),
         }
     }
 }
@@ -107,10 +110,10 @@ impl Default for LogLevel {
 // __ Структура для записи ошибок
 #[derive(Default, Debug)]
 pub struct LogMessage {
-    pub level: LogLevel,
-    pub target: LogTarget,
-    pub message: String,
-    pub context: Option<Json<Value>>,
+    pub level:      LogLevel,
+    pub target:     LogTarget,
+    pub message:    String,
+    pub context:    Option<Json<Value>>,
     pub created_at: Option<DateTime<Utc>>,
 }
 
@@ -132,7 +135,7 @@ impl LogMessage {
     }
 
     // __ Записываем в базу
-    pub async fn write(&self, executor: &PgPool) -> Result<()> {
+    pub async fn write(&self, executor: &sqlx::Pool<sqlx::Postgres>) -> Result<()> {
         let query_str = format!(
             r#"
                 INSERT INTO {} (

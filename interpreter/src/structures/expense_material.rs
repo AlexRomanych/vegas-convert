@@ -1,27 +1,27 @@
 use serde::{Deserialize, Serialize};
-use std::sync::LazyLock;
+// use std::sync::LazyLock;
 // __ Импортируем FromRow для SELECT запросов в эту структуру
-use sqlx::postgres::PgArguments;
-use sqlx::query::Query;
-use sqlx::{FromRow, Postgres, Transaction};
+// use sqlx::postgres::PgArguments;
+// use sqlx::query::Query;
+use sqlx::{/*FromRow,*/ Postgres, Transaction};
 use crate::helpers::functions::round_to_precision;
 
 // Выносим константную строку запроса наружу имплементации
-static INSERT_QUERY: LazyLock<String> = LazyLock::new(|| {
-    format!(
-        r#"
-            INSERT INTO {} (
-                order_line_id, material_code_1c, material_code_1c_copy,
-                expense_per_pic, expense, rest_per_pic, rest,
-                unit, detail, procedure, object_name, position,
-                scopes, outputs,
-                updated_at, created_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
-        "#,
-        ExpenseMaterial::EXPENSE_MATERIALS_TABLE_NAME
-    )
-});
+// static INSERT_QUERY: LazyLock<String> = LazyLock::new(|| {
+//     format!(
+//         r#"
+//             INSERT INTO {} (
+//                 order_line_id, material_code_1c, material_code_1c_copy,
+//                 expense_per_pic, expense, rest_per_pic, rest,
+//                 unit, detail, procedure, object_name, position,
+//                 scopes, outputs,
+//                 updated_at, created_at
+//             )
+//             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
+//         "#,
+//         ExpenseMaterial::EXPENSE_MATERIALS_TABLE_NAME
+//     )
+// });
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ScopeItem {

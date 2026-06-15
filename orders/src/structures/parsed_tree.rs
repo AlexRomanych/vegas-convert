@@ -34,8 +34,8 @@ pub struct OrderProcessRow {
     pub cover_height: Option<Decimal>,
     pub amount:       i32,
     // sqlx::types::Json автоматически десериализует строку из Postgres в Vec<Construct>
-    pub base:         Option<Json<Vec<Construct>>>,
-    pub cover:        Option<Json<Vec<Construct>>>,
+    pub base:         Option<Json<Construct>>,
+    pub cover:        Option<Json<Construct>>,
 }
 
 impl OrderProcessRow {

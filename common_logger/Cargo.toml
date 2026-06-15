@@ -7,6 +7,10 @@ edition = "2024"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["registry", "env-filter"] }
 tokio = { version = "1", features = ["full"] }
-sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "chrono"] }
+sqlx = { version = "0.9.0", features = [ "postgres", "runtime-tokio", "macros", "chrono" ] }
+#sqlx = { version = "0.8.6", features = [ "postgres", "runtime-tokio", "macros", "chrono" ] }
+#sqlx = { version = "0.9.0-alpha.1", features = ["postgres", "runtime-tokio-rustls", "chrono"] }
+#sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "chrono"] }
+
 chrono = { version = "0.4", features = ["serde"] }
 serde_json = "1.0"

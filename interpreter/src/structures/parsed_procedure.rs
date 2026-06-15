@@ -19,8 +19,9 @@ pub struct ParsedProcedure {
     pub in_scope:         HashMap<String, f64>,  // Входные параметры, которые не меняются в процессе расчетов
     pub out_scope:        HashMap<String, f64>,  // Все переменные, которые получились в результате расчетов в процедуре
 
-                                                 // pub has_properties: bool, // __ Есть ли свойства: [НастилМатериалы].{Плотность}
-                                                 // pub has_parameters: bool, // __ Есть ли параметры: Ширина = [Матрас].[Ширина]
+    pub has_parse_error: bool,  // Есть ли ошибка парсинга или нет
+    // pub has_properties: bool, // __ Есть ли свойства: [НастилМатериалы].{Плотность}
+    // pub has_parameters: bool, // __ Есть ли параметры: Ширина = [Матрас].[Ширина]
 }
 
 impl ParsedProcedure {
@@ -37,9 +38,9 @@ impl ParsedProcedure {
 
     // __ Очищаем от скобочек [] то, что нашли
     pub fn un_raw(&mut self) {
-    //     // self.returns = Self::process_list(&self.returns_raw);
-    //     // self.properties = Self::process_list(&self.properties_raw);
-    //     // self.parameters = Self::process_list(&self.parameters_raw);
+        //     // self.returns = Self::process_list(&self.returns_raw);
+        //     // self.properties = Self::process_list(&self.properties_raw);
+        //     // self.parameters = Self::process_list(&self.parameters_raw);
         // self.outputs = Self::process_list(&self.outputs_raw);
     }
 
@@ -77,7 +78,7 @@ impl ParsedProcedure {
 
     // __ Устанавливаем входные Scopes
     // __ Передаем object_name, чтобы удалить их из parameters_raw, которые туда залетают припарсинге процедуры
-    pub fn set_scopes(&mut self, scopes: &Vec<(String, f64)>, /*object_name: &str*/) {
+    pub fn set_scopes(&mut self, scopes: &Vec<(String, f64)> /*object_name: &str*/) {
         // __ Сортируем по убыванию, чтобы "ВысотаИзСпецификации" была раньше "Высота"
         // __ чтобы корректно отрабатывал contains
         let mut sorted_scope = scopes.clone();
@@ -86,7 +87,7 @@ impl ParsedProcedure {
         // __ Обнуляем Параметры
         self.parameters_raw
             .iter_mut()
-            .for_each(|(k, v)| *v = 0.0);
+            .for_each(|(_k, v)| *v = 0.0);
 
         // for (k, v) in self.parameters_raw.iter_mut() {
         //     *v = 0.0;   // Обнуляем
@@ -140,7 +141,7 @@ impl ParsedProcedure {
 
     // __ Добавляем свойства материала в скоуп
     pub fn add_properties_to_scopes(&mut self, scopes: &Vec<(String, f64)>) {
-        for (var, val) in scopes {
+        for (_var, _val) in scopes {
             // __ Вставляем входные свойства
             // if let Some(v) = self.properties.get(var) {
             //     self.properties
@@ -169,13 +170,13 @@ impl ParsedProcedure {
         let mut procedure_result = 0.0;
         let mut procedure_rest: Option<f64> = None;
 
-        let mut is_rest_present = false;
+        // let mut is_rest_present = false;
         for (k, v) in self.returns_raw.iter_mut() {
             *v = 0.0;
             if let Some(value) = scopes.get(k) {
                 *v = *value;
                 if k.to_lowercase().contains("отход") {
-                    is_rest_present = true;
+                    // is_rest_present = true;
                     procedure_rest = Some(*value);
                 } else {
                     procedure_result = *value;

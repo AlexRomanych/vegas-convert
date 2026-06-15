@@ -2,7 +2,7 @@ use crate::structures::procedure::Procedure;
 use anyhow::Result;
 use constants::PROCEDURES_TABLE_NAME;
 use sqlx::PgPool;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashSet};
 use std::sync::OnceLock;
 
 pub mod structures;

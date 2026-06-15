@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::str::FromStr;
+use sqlx::AssertSqlSafe; // Не забываем импортировать обертку безопасности
 
 pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: &PgPool) -> Result<()> {
     // __ Очищает данные и сбрасывает счетчики ID (SERIAL) в начальное состояние
@@ -50,7 +51,7 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: 
     // __ Чтение Список всех Групп сортировки производства из базы для проверки ключа
     let mut groups_map_base: HashMap<i64, i64> = HashMap::new();
     let select_query = format!("SELECT id FROM {}", MODEL_MANUFACTURE_GROUPS_TABLE_NAME);
-    let rows = sqlx::query(&select_query)
+    let rows = sqlx::query(AssertSqlSafe(select_query.as_str()))
         .fetch_all(&mut **tx)
         .await?;
     for row in rows {
@@ -229,7 +230,7 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: 
     // __ Чтение всех Моделей из базы для проверки ключа
     let mut models_map_base: HashMap<String, Option<String>> = HashMap::new();
     let select_query = format!("SELECT code_1c, cover_code_1c_copy FROM {}", Model::MODELS_TABLE_NAME);
-    let rows = sqlx::query(&select_query)
+    let rows = sqlx::query(AssertSqlSafe(select_query.as_str()))
         .fetch_all(&mut **tx)
         .await?;
     for row in rows {
@@ -243,7 +244,7 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: 
         if let Some(code_cover_str) = code_cover {
             if models_map_base.contains_key(code_cover_str) {
                 let select_query = format!("UPDATE {} SET cover_code_1c = $1 WHERE code_1c = $2", Model::MODELS_TABLE_NAME);
-                sqlx::query(&select_query)
+                sqlx::query(AssertSqlSafe(select_query.as_str()))
                     .bind(code_cover_str)
                     .bind(code_model)
                     .execute(&mut **tx)
@@ -332,7 +333,7 @@ async fn store_item(model: &Model, tx: &mut Transaction<'_, Postgres>) -> Result
     );
 
     // __ Выполняем вставку с обновлением при конфликте
-    let result = sqlx::query(&query_str)
+    let result = sqlx::query(AssertSqlSafe(query_str.as_str()))
         // 1-8: Ключи и связи (Strings & IDs)
         .bind(&model.code_1c) // $1
         .bind(model.model_manufacture_status_id) // $2 (Option<i64>)
@@ -410,7 +411,7 @@ pub async fn reset_active_flag(tx: &mut Transaction<'_, Postgres>) -> Result<()>
 
     for name in table_names {
         let query = format!("UPDATE {} SET active = false", name);
-        sqlx::query(&query)
+        sqlx::query(AssertSqlSafe(query.as_str()))
             .execute(&mut **tx)
             .await?;
     }
@@ -454,7 +455,7 @@ where
     // __ Чтение (тут всё обычно)
     let mut entity_map_base: HashMap<T, String> = HashMap::new();
     let select_query = format!("SELECT {}, name FROM {}", pk, table_name);
-    let rows = sqlx::query(&select_query)
+    let rows = sqlx::query(AssertSqlSafe(select_query.as_str()))
         .fetch_all(&mut **tx)
         .await?;
 

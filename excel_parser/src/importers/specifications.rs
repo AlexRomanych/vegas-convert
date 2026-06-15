@@ -18,6 +18,7 @@ use rust_decimal::Decimal;
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use std::collections::HashMap;
 use std::str::FromStr;
+use sqlx::AssertSqlSafe; // Не забываем импортировать обертку безопасности
 
 pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: &PgPool) -> Result<()> {
     // __ Очищает данные и сбрасывает счетчики ID (SERIAL) в начальное состояние в таблице спецификаций и их зависимостей
@@ -260,7 +261,7 @@ async fn update_missing_materials_code_1c(material: Material, tx: &mut Transacti
         ModelConstructItem::CONSTRUCT_ITEM_TABLE_NAME
     );
 
-    sqlx::query(&query_str)
+    sqlx::query(AssertSqlSafe(query_str.as_str()))
         .bind(&material.code_1c) // $1
         .bind(&material.code_1c) // $1
         .execute(&mut **tx)
@@ -278,7 +279,7 @@ async fn get_entity(tx: &mut Transaction<'_, Postgres>, table_name: &str) -> Res
     // __ Используем Context, чтобы в логах было понятно, на какой таблице упало
     let select_query = format!("SELECT code_1c FROM {}", table_name);
 
-    let rows = sqlx::query(&select_query)
+    let rows = sqlx::query(AssertSqlSafe(select_query.as_str()))
         .fetch_all(&mut **tx)
         .await
         .with_context(|| format!("Failed to fetch codes from table: {}", table_name))?;
@@ -317,7 +318,7 @@ async fn store_specification(specification: ModelConstruct, tx: &mut Transaction
     );
 
     // __ Выполняем вставку с обновлением при конфликте
-    sqlx::query(&query_str)
+    sqlx::query(AssertSqlSafe(query_str.as_str()))
         .bind(&specification.code_1c) // $1
         .bind(&specification.name) // $1
         .bind(&specification.model_code_1c) // $1
@@ -351,7 +352,7 @@ async fn store_specification_item(specification_item: ModelConstructItem, tx: &m
     );
 
     /*let result = */
-    sqlx::query(&query_str)
+    sqlx::query(AssertSqlSafe(query_str.as_str()))
         .bind(&specification_item.construct_code_1c)
         .bind(&specification_item.material_code_1c)
         .bind(&specification_item.material_code_1c_copy)
@@ -410,7 +411,7 @@ async fn check_or_insert_missing_materials_group_and_category(tx: &mut Transacti
         Material::MATERIALS_TABLE_NAME
     );
 
-    sqlx::query(&query_str)
+    sqlx::query(AssertSqlSafe(query_str.as_str()))
         .bind(MISSING_MATERIALS_GROUP_CODE_1C)
         .bind(MISSING_MATERIALS_GROUP_CODE_1C)
         .bind(MISSING_MATERIALS_GROUP_NAME)
@@ -433,7 +434,7 @@ async fn check_or_insert_missing_materials_group_and_category(tx: &mut Transacti
         Material::MATERIALS_TABLE_NAME
     );
 
-    sqlx::query(&query_str)
+    sqlx::query(AssertSqlSafe(query_str.as_str()))
         .bind(MISSING_MATERIALS_CATEGORY_CODE_1C)
         .bind(MISSING_MATERIALS_CATEGORY_CODE_1C)
         .bind(MISSING_MATERIALS_CATEGORY_NAME)
@@ -453,7 +454,7 @@ async fn delete_missing_materials(tx: &mut Transaction<'_, Postgres>) -> Result<
         Material::MATERIALS_TABLE_NAME,
     );
 
-    sqlx::query(&query_str)
+    sqlx::query(AssertSqlSafe(query_str.as_str()))
         .bind(MISSING_MATERIALS_GROUP_CODE_1C)
         .bind(MISSING_MATERIALS_CATEGORY_CODE_1C)
         .execute(&mut **tx)

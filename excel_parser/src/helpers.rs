@@ -8,6 +8,7 @@ use sqlx::types::Json;
 use crate::structures::custom_errors::CustomError;
 use crate::structures::material::Material;
 use crate::structures::traits::{ExcelPattern};
+use sqlx::AssertSqlSafe; // или sqlx::AssertSqlSafe в зависимости от точной структуры экспорта в 0.9.0
 
 const REMOVABLE_BP: &str = "БП";
 
@@ -106,12 +107,14 @@ where
 pub async fn truncate_table(table_name: &str, tx: &mut Transaction<'_, Postgres>) -> anyhow::Result<()> {
     let query = format!("TRUNCATE TABLE {} RESTART IDENTITY CASCADE", table_name);
 
-    sqlx::query(&query)
+    // query.as_str() превращает &String в &str
+    sqlx::raw_sql(AssertSqlSafe(query.as_str()))
         .execute(&mut **tx)
         .await?; // __ Если здесь будет ошибка, она уйдет в вызывающий код
 
     Ok(()) // __ Возвращаем "пустой" успех
 }
+
 
 
 // __ Проверяет на вшивость структуру Excel файла
