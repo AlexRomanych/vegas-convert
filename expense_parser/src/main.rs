@@ -15,9 +15,9 @@ use procedures::structures::procedure::Procedure;
 use serde_json::json;
 use sqlx::types::Json;
 use std::collections::{BTreeMap, HashSet};
-use std::{env, io};
 use std::io::Write;
 use std::time::Instant;
+use std::{env, io};
 
 // use interpreter::helpers::maps::{get_keywords, get_operators, get_token_map};
 // use interpreter::structures::parsed_procedure::ParsedProcedure;
@@ -35,17 +35,37 @@ async fn main() -> Result<()> {
     let start_time = Instant::now();
 
     // __ Получаем входной параметр
-    // args() возвращает итератор. Первый элемент (индекс 0) — это всегда путь к самой программе.
+    // 1. Собираем аргументы командной строки
     let args: Vec<String> = env::args().collect();
 
-    if args.len() > 1 {
-        let first_param = &args[1];
-        println!("Получен параметр: {}", first_param);
-    } else {
-        println!("Параметры не переданы");
+    // args[0] — путь к бинарнику, args[1] — наш JSON от Laravel
+    if args.len() < 2 {
+        anyhow::bail!("Отсутствует аргумент JSON с order_ids");
     }
 
-    let args = [447_i64, 455_i64];
+    let json_data = &args[1];
+
+    // 2. Десериализуем строку напрямую в коллекцию для быстрой выборки
+    let order_ids: HashSet<i64> = serde_json::from_str(json_data).context("Не удалось распарсить переданный из PHP JSON массив")?;
+
+
+
+
+
+    // println!("ids: {:?}", order_ids);
+
+    // // args() возвращает итератор. Первый элемент (индекс 0) — это всегда путь к самой программе.
+    // let args: Vec<String> = env::args().collect();
+    //
+    // if args.len() > 1 {
+    //     let first_param = &args[1];
+    //     println!("Получен параметр: {}", first_param);
+    // } else {
+    //     println!("Параметры не переданы");
+    // }
+
+    // let order_ids = [947_i64];
+    // let order_ids = HashSet::from(order_ids);
 
     // __ Соединяемся с базой
     let pool = database::connect().await?;
@@ -56,15 +76,14 @@ async fn main() -> Result<()> {
         target:     LogTarget::Expense,
         message:    "Начало расчета сырья".to_string(),
         context:    Some(Json(json!({
-            "order ids": format!("{:?}", args),
+            "order ids": format!("{:?}", order_ids),
         }))),
         created_at: None,
     };
     inform_message.write(&pool).await.ok();
 
     // __ Получаем структуру Заявок для парсинга Расхода
-    let orders_ids = HashSet::from(args);
-    let orders = get_data(&pool, orders_ids).await?;
+    let orders = get_data(&pool, order_ids).await?;
 
     // __ Получаем материалы
     let mut materials = get_materials_pool(&pool).await?; // Все материалы с ключем по коду 1с
@@ -96,7 +115,7 @@ async fn main() -> Result<()> {
     // __ Получаем процедуры с сервера
     let procedures = get_procedures_by_list_code_1c_pool(&pool, &procedures_unique).await?; // из списка
     // let procedures = get_procedures().await?; // все
-    // let procedures = get_procedures_local(); // для разработки
+    // let procedures = _get_procedures_local(); // для разработки
 
     // println!("{}", procedures.len());
 
@@ -105,6 +124,8 @@ async fn main() -> Result<()> {
 
     // __ Парсим все процедуры
     let prepare_procedures = parse_procedures(&pool, &procedures).await?;
+
+    // println!("Parsed procedures: {:#?}", prepare_procedures);
 
     // __ Создаем транзакцию
     let mut tx = pool.begin().await?;
@@ -115,7 +136,7 @@ async fn main() -> Result<()> {
 
     // __ Расчитываем материалы
     // rustfmt:skip
-    for (_, order_lines) in orders {
+    for (id, order_lines) in orders {
         for order_line in order_lines {
             // !!! Debug
             // println!(
@@ -132,9 +153,38 @@ async fn main() -> Result<()> {
             //     continue;
             // }
 
+            let mut has_cover = false; // __ Маяк наличия чехла
+
             // __ Два прохода: База и Чехол
             for i in 0..=1 {
-                let source_data = if i == 0 { &order_line.base } else { &order_line.cover };
+
+                // __ Проверяем, что в спецификации есть чехол по процедуре расчета
+                // __ Потому, что может быть ситуация, когда в Таблице Models есть привязка к Чехлу
+                // __ например в Подушках, а в расчетах-то он и не нужен
+                let source_data = if i == 0 {
+                    if let Some(construct) = &order_line.base {
+                        if let Some(items) = &construct.items {
+                            for item in items.iter() {
+                                if let Some(procedure_name) = &item.pn {
+                                    if procedure_name.contains("ПодборЧехла")  {
+                                        has_cover = true;
+                                        // println!("{}", procedure_name);
+                                    }
+                                    // if procedure_name.to_lowercase().contains("ПодборЧехла".to_lowercase().as_str())  {}
+                                }
+                            }
+                        }
+                    }
+
+                    &order_line.base
+                } else {
+                    &order_line.cover
+                };
+
+                // __ Пропускаем то, что без чехла
+                if i == 1 && !has_cover {
+                    continue;
+                }
 
                 if let Some(construct) = &source_data {
                     // !!! Debug
@@ -201,6 +251,35 @@ async fn main() -> Result<()> {
 
                                         // __ Запускаем Парсер
                                         parser.run(&procedure.expressions_node);
+
+                                        // __ Пишем все ошибки, если они есть
+                                        // std::mem::take забирает вектор из parser, а на его место кладет пустой Vec::new()
+                                        let errors = std::mem::take(&mut parser.runtime_errors);
+                                        for error in errors {
+                                            // __ Пишем Ошибки в Лог
+                                            let inform_message = LogMessage {
+                                                level:      LogLevel::ERROR,
+                                                target:     LogTarget::Expense,
+                                                message:    "Ошибка процедуры расчета сырья".to_string(),
+                                                context:    Some(Json(json!({
+                                                    "error": error.message,
+                                                    "order_id": id,
+                                                    "procedure_name": procedure.procedure.name,
+                                                    "procedure_code_1c": procedure.procedure.code_1c,
+                                                    "line_id": order_line.line_id,
+                                                    "size": format!(
+                                                        "{}x{}x{}",
+                                                        order_line.length.map(|v| v.to_string()).unwrap_or_else(|| "0".to_string()),
+                                                        order_line.width.map(|v| v.to_string()).unwrap_or_else(|| "0".to_string()),
+                                                        order_line.height.map(|v| v.to_string()).unwrap_or_else(|| "0".to_string()),
+                                                    ),
+                                                    "model": order_line.model_name,
+                                                    "amount": order_line.amount,
+                                                }))),
+                                                created_at: None,
+                                            };
+                                            inform_message.write(&pool).await.ok();
+                                        }
 
                                         // __ Парсим результат выполнения функции
                                         let (result, rest) = &procedure.set_results(&parser.scope);
@@ -465,8 +544,10 @@ async fn main() -> Result<()> {
 
     // __ Статистика по времени
     let duration = start_time.elapsed();
-    println!("Время выполнения: {:?}", duration);
-    println!("Прошло миллисекунд: {}", duration.as_millis());
+    if cfg!(debug_assertions) {
+        println!("Время выполнения: {:?}", duration);
+        println!("Прошло миллисекунд: {}", duration.as_millis());
+    };
 
     let inform_message = LogMessage {
         level:      LogLevel::INFO,
@@ -479,13 +560,13 @@ async fn main() -> Result<()> {
     };
     inform_message.write(&pool).await.ok();
 
-    // __ Принудительно толкаем в буфер
-    io::stdout().flush()?;
-    // io::stdout().flush().unwrap();
-
     if !cfg!(debug_assertions) {
         println!("0")
     };
+
+    // __ Принудительно толкаем в буфер
+    io::stdout().flush()?;
+    // io::stdout().flush().unwrap();
 
     Ok(())
 }
@@ -505,66 +586,41 @@ async fn get_data(pool: &sqlx::PgPool, order_ids: HashSet<i64>) -> Result<BTreeM
 fn _get_procedures_local() -> Vec<Procedure> {
     let text = String::from(
         r#"
-                Длина = [Матрас].[Длина];
-                Ширина = [Матрас].[Ширина];
-                // ДЛИНА пружинного блока
-                [БлокПружинный].[Длина] = 1.81;
-                Если Длина < 1.78 Тогда
-                    РабочаяДлина = Длина - 2*0.06;   // Борт 6 см
-                ИначеЕсли Длина < 1.82 Тогда
-                    РабочаяДлина = 1.68;   // 41 пружин
-                ИначеЕсли Длина < 1.86 Тогда
-                    РабочаяДлина = 1.72;  // 42 пружин
-                ИначеЕсли Длина < 1.90 Тогда
-                    РабочаяДлина = 1.76;  // 43 пружин
-                ИначеЕсли Длина < 1.94 Тогда
-                    РабочаяДлина = 1.8;  // 44 пружин
-                Иначе
-                    РабочаяДлина = 1.81;  // Стандартная длина
-                КонецЕсли;
-                // ШИРИНА пружинного блока
-                Если Ширина <= 0.59 Тогда
-                    [БлокПружинный].[Ширина] = 0.61;
-                    РабочаяШирина = Ширина - 2*0.06;
-                ИначеЕсли Ширина <= 0.65 Тогда
-                    [БлокПружинный].[Ширина] = 0.61;
-                    РабочаяШирина = 0.52;	// 12 пружин
-                ИначеЕсли Ширина <= 0.69 Тогда
-                    [БлокПружинный].[Ширина] = 0.61;
-                    РабочаяШирина = 0.57;	// 13 пружин
-                ИначеЕсли Ширина <= 0.81 Тогда
-                    [БлокПружинный].[Ширина] = 0.61;
-                    РабочаяШирина = 0.61;	// 14 пружин
-                ИначеЕсли Ширина <= 0.91 Тогда
-                    [БлокПружинный].[Ширина] = 0.71;
-                    РабочаяШирина = 0.71;	// 16 пружин
-                ИначеЕсли Ширина <= 1.09 Тогда
-                    [БлокПружинный].[Ширина] = 0.81;
-                    РабочаяШирина = 0.81;	// 19 пружин
-                ИначеЕсли Ширина <= 1.28 Тогда
-                    [БлокПружинный].[Ширина] = 1.01;
-                    РабочаяШирина = 1.01;	// 23 пружин
-                ИначеЕсли Ширина <= 1.48 Тогда
-                    [БлокПружинный].[Ширина] = 1.21;
-                    РабочаяШирина = 1.21;	// 27 пружин
-                ИначеЕсли Ширина <= 1.68 Тогда
-                    [БлокПружинный].[Ширина] = 1.41;
-                    РабочаяШирина = 1.41;	// 32 пружин
-                ИначеЕсли Ширина <= 1.88 Тогда
-                    [БлокПружинный].[Ширина] = 1.61;
-                    РабочаяШирина = 1.61;	// 36 пружин
-                Иначе
-                    [БлокПружинный].[Ширина] = 1.81;
-                    РабочаяШирина = 1.81;	// 41 пружин
-                КонецЕсли;
-                // РАСЧЕТ
-                [БлокПружинный] = (РабочаяДлина * РабочаяШирина)/([БлокПружинный].[Длина] * [БлокПружинный].[Ширина]);
-                [БлокПружинныйОтход] = 1 - [БлокПружинный];
-                // ФОРМАТКА
-                Если Ширина = 0.28 Тогда
-                    [БлокПружинный] = 0;
-                    [БлокПружинныйОтход] = 0;
-                КонецЕсли;
+            [ШвейныеМатериалы].[Ширина] = [ШвейныеМатериалы].{Ширина};
+            ШиринаПолотна  =  [ШвейныеМатериалы].{Ширина};
+            Захват = 0.02;
+
+            Если [Подушка].[Длина]=0.7 и [Подушка].[Ширина]= 0.7 тогда
+                ПолезныйРасход = 0.7 ;
+                ОбщийРасход = 0.72 + Захват;
+                Отход = ОбщийРасход - ПолезныйРасход;
+
+            ИначеЕсли [Подушка].[Длина]=0.7 и [Подушка].[Ширина]= 0.5 тогда
+                ПолезныйРасход = 0.51 ;
+                ОбщийРасход = 0.52 + Захват;
+                Отход = ОбщийРасход - ПолезныйРасход;
+
+            ИначеЕсли [Подушка].[Длина]=0.6 и [Подушка].[Ширина]= 0.4 тогда
+                ПолезныйРасход = 0.35 ;
+                ОбщийРасход = 0.42 + Захват;
+                Отход = ОбщийРасход - ПолезныйРасход;
+
+            ИначеЕсли [Подушка].[Длина]=0.6 и [Подушка].[Ширина]= 0.6 тогда
+                ПолезныйРасход = 0.52 ;
+                ОбщийРасход = 0.62 + Захват;
+                Отход = ОбщийРасход - ПолезныйРасход;
+
+            ИначеЕсли [Подушка].[Длина]=0.5 и [Подушка].[Ширина]= 0.5 тогда
+                ПолезныйРасход = 0.37 ;
+                ОбщийРасход = 0.52 + Захват;
+                Отход = ОбщийРасход - ПолезныйРасход;
+
+
+            Иначе ОбщийРасход = 0;
+
+            КонецЕсли;
+            [ШвейныеМатериалы] =  ПолезныйРасход;
+            [ШвейныеМатериалыОтход] = Отход;
             "#,
     );
 
@@ -573,7 +629,7 @@ fn _get_procedures_local() -> Vec<Procedure> {
         name:           "".to_string(),
         text_vba:       None,
         object_code_1c: None,
-        object_name:    Some("БлокПружинный".to_string()),
+        object_name:    Some("ШвейныеМатериалы".to_string()),
         text:           Some(text),
     };
 

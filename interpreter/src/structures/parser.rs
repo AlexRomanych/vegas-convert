@@ -2,14 +2,21 @@ use crate::structures::expression_nodes::{ExpressionNode, IfBranch};
 use crate::structures::tokens::{Token, TokenType};
 use std::collections::HashMap;
 
+#[derive(Debug, Default, Clone)]
+pub struct RuntimeError {
+    pub message: String,
+}
+
+
 #[derive(Debug, Default)]
 pub struct Parser {
     // procedure: ParsedProcedure,
-    tokens:      Vec<Token>,
-    pos:         usize,
-    pub scope:   HashMap<String, f64>, // __ Scope хранит значения переменных
-    in_scope:    HashMap<String, f64>, // __ Scope входящие параметры + свойства
+    tokens: Vec<Token>,
+    pos: usize,
+    pub scope: HashMap<String, f64>, // __ Scope хранит значения переменных
+    in_scope: HashMap<String, f64>, // __ Scope входящие параметры + свойства
     pub code_1c: String,
+    pub runtime_errors: Vec<RuntimeError>,
 }
 
 
@@ -17,11 +24,12 @@ impl Parser {
     // __ Конструктор
     pub fn new() -> Self {
         Self {
-            tokens:   Vec::new(),
-            pos:      0,
-            scope:    HashMap::new(),
+            tokens: Vec::new(),
+            pos: 0,
+            scope: HashMap::new(),
             in_scope: HashMap::new(),
             code_1c: String::new(),
+            runtime_errors: Vec::new(),
         }
     }
 
@@ -37,6 +45,7 @@ impl Parser {
         self.scope.clear();
         self.in_scope.clear();
         self.code_1c.clear();
+        self.runtime_errors.clear();
     }
 
     // __ Установка входного scope
@@ -71,9 +80,22 @@ impl Parser {
             Some(token) => token,
             None => {
                 // TODO: Обработать ошибку
-                println!("Токен: {:?}", self.tokens[self.pos]);
-                panic!("На позиции {} ожидается {:?}", self.pos, token_types)
-            },
+                let error = format!("Токен: {:?}. На позиции {} ожидается {:?}", self.tokens[self.pos], self.pos, token_types);
+                self.runtime_errors.push(RuntimeError {message: error});
+
+                if cfg!(debug_assertions) {
+                    println!("Токен: {:?}", self.tokens[self.pos]);
+                    panic!("На позиции {} ожидается {:?}", self.pos, token_types)
+                }
+
+                // !!! Возвращаем, чтобы не ломать
+                // TODO: Понаблюдать за этим поведением
+                self.tokens.get(self.pos).cloned().unwrap_or_else(|| Token {
+                    token_type: TokenType::SEMICOLON, // или TokenType::Unknown / Error
+                    text: String::new(),
+                    pos: 0, // если у тебя есть координаты, можно подставить дефолтные
+                })
+            }
         }
     }
 
@@ -124,8 +146,8 @@ impl Parser {
                 let right_node = self.parse_formula();
                 return ExpressionNode::Assign {
                     operator: assign_token,
-                    left:     Box::new(ExpressionNode::Variable(variable_token)),
-                    right:    Box::new(right_node),
+                    left: Box::new(ExpressionNode::Variable(variable_token)),
+                    right: Box::new(right_node),
                 };
             }
             // Если после переменной нет "=", значит это просто формула, откатываемся
@@ -263,17 +285,28 @@ impl Parser {
             return ExpressionNode::Variable(token);
         }
 
-
-        println!("Procedure code: {}", self.code_1c);
-        self.tokens
-            .iter()
-            .enumerate() // Добавляет счетчик (0, 1, 2...)
-            .for_each(|(i, token)| {
-                println!("{i}: {token:?}");
-            });
-
         let current = &self.tokens[self.pos];
-        panic!("Неожиданный токен {:?} на позиции {}", current.token_type, self.pos);
+
+        let error = format!("Неожиданный токен {:?} на позиции {}", current.token_type, self.pos);
+        self.runtime_errors.push(RuntimeError {message: error});
+
+        if cfg!(debug_assertions) {
+            println!("Procedure code: {}", self.code_1c);
+            self.tokens
+                .iter()
+                .enumerate() // Добавляет счетчик (0, 1, 2...)
+                .for_each(|(i, token)| {
+                    println!("{i}: {token:?}");
+                });
+            panic!("Неожиданный токен {:?} на позиции {}", current.token_type, self.pos);
+        }
+
+        // !!! Возвращаем, чтобы не ломать
+        ExpressionNode::Number(Token {
+            token_type: TokenType::NUMBER,
+            text: "0".to_string(),
+            pos: 0,
+        })
     }
 
 
@@ -300,7 +333,7 @@ impl Parser {
             let ei_body = self.parse_block_until(&[TokenType::ELSEIF, TokenType::ELSE, TokenType::ENDIF]);
             branches.push(IfBranch {
                 condition: ei_condition,
-                body:      ei_body,
+                body: ei_body,
             });
         }
 
@@ -359,11 +392,20 @@ impl Parser {
                     return *value;
                 }
                 // !!! __ И только потом во внешний scope
-                *self.in_scope.get(&token.text).expect(&format!("Переменная {} не найдена", token.text))
+                // *self.in_scope.get(&token.text).expect(&format!("Переменная {} не найдена", token.text))
 
-                // if let Some(value) = self.in_scope.get(&token.text) {
-                //     return *value;
-                // }
+                if let Some(value) = self.in_scope.get(&token.text) {
+                    *value
+                } else {
+                    let error = format!("Переменная {} не найдена", token.text);
+                    self.runtime_errors.push(RuntimeError {message: error});
+
+                    if cfg!(debug_assertions) {
+                        println!("Переменная {} не найдена", token.text)
+                    }
+                    // !!! Возвращаем, чтобы не ломать
+                    0_f64
+                }
                 // *self.scope.get(&token.text).expect(&format!("Переменная {} не найдена", token.text))
             },
             ExpressionNode::BinOperation { operator, left, right } => {
@@ -382,7 +424,14 @@ impl Parser {
                     TokenType::STAR   => l_val * r_val,
                     TokenType::SLASH  => {
                         if r_val == 0.0 {
-                            println!("⚠️ Деление на ноль!");
+                             let error = format!("⚠️ Деление на ноль! ({} / {})", l_val, r_val);
+                            self.runtime_errors.push(RuntimeError {message: error});
+
+                            if cfg!(debug_assertions) {
+                                println!("⚠️ Деление на ноль!");
+                            }
+
+                            // !!! Возвращаем, чтобы не ломать
                             0.0
                         } else {
                             l_val / r_val
@@ -486,18 +535,37 @@ impl Parser {
                                 ExpressionNode::String(token) => {
                                     // Убираем кавычки для чистого вывода
                                     let clean_text = token.text.trim_matches('"');
-                                    println!("⚠️  1С Предупреждение: {}", clean_text);
+
+                                    let error = format!("⚠️ 1С Предупреждение: {}", clean_text);
+                                    self.runtime_errors.push(RuntimeError {message: error});
+
+                                    if cfg!(debug_assertions) {
+                                        println!("⚠️ 1С Предупреждение: {}", clean_text);
+                                    }
                                 },
                                 _ => {
                                     let val = self.run(arg);
-                                    println!("⚠️  1С Предупреждение: {}", val);
+
+                                    let error = format!("⚠️ 1С Предупреждение: {}", val);
+                                    self.runtime_errors.push(RuntimeError {message: error});
+
+                                    if cfg!(debug_assertions) {
+                                        println!("⚠️ 1С Предупреждение: {}", val);
+                                    }
                                 }
                             }
                         }
                         0.0 // Функция Предупреждение ничего не возвращает в 1С
                     },
                     _ => {
-                        println!("Пропущенная функция: {}", name.text);
+                        let error = format!("Пропущенная функция: {}", name.text);
+                            self.runtime_errors.push(RuntimeError {message: error});
+
+                        if cfg!(debug_assertions) {
+                            println!("Пропущенная функция: {}", name.text);
+                        }
+
+                         // !!! Возвращаем, чтобы не ломать
                         0.0
                     },
                 }

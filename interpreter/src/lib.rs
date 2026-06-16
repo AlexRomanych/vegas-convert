@@ -3,18 +3,18 @@
 pub mod helpers;
 pub mod structures;
 
-use anyhow::{Result};
 use crate::structures::parsed_procedure::ParsedProcedure;
 use crate::structures::parser::Parser;
 use crate::structures::tokens::{Token, TokenType};
+use anyhow::Result;
 use helpers::maps::*;
 use logger::structures::log_message::{LogLevel, LogMessage, LogTarget};
 use procedures::structures::procedure::Procedure;
 use regex::Regex;
 use serde_json::json;
+use sqlx::PgPool;
 use sqlx::types::Json;
 use std::collections::HashMap;
-use sqlx::PgPool;
 // use anyhow::{Context, Result};
 // use crate::helpers::functions::{delete_materials_by_order_ids, delete_materials_by_order_ids_tx};
 // use crate::structures::expense_material::{ExpenseMaterial, ScopeItem};
@@ -128,10 +128,37 @@ pub async fn parse_procedures(pool: &PgPool, procedures: &Vec<Procedure>) -> Res
                     // __ Проверяем на выходные свойства
                     TokenType::OUTPUT => {
                         change_to_var_token = true;
-                        parsed_procedure
-                            .outputs_raw
-                            .insert(next_token.text.clone(), 0.0);
-                        unique_returns.insert(next_token.text.clone(), next_token.clone()); // Собираем уникальные аргументы
+
+                        // __ Убираем из выходных параметров случайно попавшие входные параметры ([Подушка].[Длина]), которые попадают сюда
+                        // __ из-за использования в выражениях:
+                        // __ ИначеЕсли [Подушка].[Длина]=0.7 и [Подушка].[Ширина]= 0.5 тогда
+                        match parsed_procedure
+                            .procedure
+                            .object_name
+                            .clone()
+                        {
+                            Some(obj_name) => {
+                                if next_token.text.contains(&obj_name) {
+                                    // __ Если есть в выращении Тип объекта, тогда в выходные параметры
+                                    parsed_procedure
+                                        .outputs_raw
+                                        .insert(next_token.text.clone(), 0.0);
+                                    unique_returns.insert(next_token.text.clone(), next_token.clone());
+                                    // __ Иначе засовываем во входные параметры
+                                } else {
+                                    parsed_procedure
+                                        .parameters_raw
+                                        .insert(next_token.text.clone(), 0.0);
+                                    unique_parameters.insert(next_token.text.clone(), next_token.clone());
+                                }
+                            },
+                            None => {
+                                parsed_procedure
+                                    .outputs_raw
+                                    .insert(next_token.text.clone(), 0.0);
+                                unique_returns.insert(next_token.text.clone(), next_token.clone());
+                            },
+                        }
                     },
 
                     // __ Проверяем на выходные значения
@@ -191,7 +218,7 @@ pub async fn parse_procedures(pool: &PgPool, procedures: &Vec<Procedure>) -> Res
             };
 
             inform_message.write(&pool).await.ok();
-            return Err(anyhow::anyhow!( "Ошибка парсинга процедуры".to_string()));
+            return Err(anyhow::anyhow!("Ошибка парсинга процедуры".to_string()));
         }
 
 

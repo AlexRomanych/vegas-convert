@@ -26,7 +26,7 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: 
     truncate_table(ModelConstructItem::CONSTRUCT_ITEM_TABLE_NAME, tx).await?;
 
     // __ Открываем книгу
-    let mut workbook: Xlsx<_> = open_workbook(path).with_context(|| format!("Не удалось открыть файл процедур: {}", path))?;
+    let mut workbook: Xlsx<_> = open_workbook(path).with_context(|| format!("Не удалось открыть файл Спецификаций: {}", path))?;
 
     // __ Получаем лист
     let range = workbook
@@ -293,6 +293,9 @@ async fn get_entity(tx: &mut Transaction<'_, Postgres>, table_name: &str) -> Res
 
     Ok(entity_map_base)
 }
+
+// ___ Удаляем Спецификацию
+
 
 // ___ Сохраняем Спецификацию
 async fn store_specification(specification: ModelConstruct, tx: &mut Transaction<'_, Postgres>) -> Result<()> {
