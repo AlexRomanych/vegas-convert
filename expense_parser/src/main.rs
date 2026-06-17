@@ -34,22 +34,32 @@ async fn main() -> Result<()> {
     // __ Статистические измерения
     let start_time = Instant::now();
 
-    // __ Получаем входной параметр
-    // 1. Собираем аргументы командной строки
-    let args: Vec<String> = env::args().collect();
+    let order_ids: HashSet<i64>;
 
-    // args[0] — путь к бинарнику, args[1] — наш JSON от Laravel
-    if args.len() < 2 {
-        anyhow::bail!("Отсутствует аргумент JSON с order_ids");
+
+    if !cfg!(debug_assertions) {
+        // __ На проде
+        // __ Получаем входной параметр
+        // 1. Собираем аргументы командной строки
+        let args: Vec<String> = env::args().collect();
+
+        // args[0] — путь к бинарнику, args[1] — наш JSON от Laravel
+        if args.len() < 2 {
+            anyhow::bail!("Отсутствует аргумент JSON с order_ids");
+        }
+
+        let json_data = &args[1];
+
+        // 2. Десериализуем строку напрямую в коллекцию для быстрой выборки
+        order_ids = serde_json::from_str(json_data).context("Не удалось распарсить переданный из PHP JSON массив")?;
+    } else {
+        // __ На dev
+        let order_ids_arr = [
+            449, 450, 467, 445, 456, 462, 438, 461, 452, 475, 442, 444, 446, 447, 443, 451, 454, 459, 470, 476, 436, 455, 463, 440, 472, 439, 448,
+            457, 453, 473, 441, 464, 468, 474, 466, 471, 460, 465, 458, 469, 437,
+        ];
+        order_ids = HashSet::from(order_ids_arr);
     }
-
-    let json_data = &args[1];
-
-    // 2. Десериализуем строку напрямую в коллекцию для быстрой выборки
-    let order_ids: HashSet<i64> = serde_json::from_str(json_data).context("Не удалось распарсить переданный из PHP JSON массив")?;
-
-
-
 
 
     // println!("ids: {:?}", order_ids);
@@ -64,8 +74,7 @@ async fn main() -> Result<()> {
     //     println!("Параметры не переданы");
     // }
 
-    // let order_ids = [947_i64];
-    // let order_ids = HashSet::from(order_ids);
+
 
     // __ Соединяемся с базой
     let pool = database::connect().await?;
@@ -153,20 +162,29 @@ async fn main() -> Result<()> {
             //     continue;
             // }
 
+            // __ Проверяем, является ли Модель Average или нет
+            // __ В зависимости от этого, либо рассчитываем, либо делаем что-то еще
+            if order_line.is_average() {
+                println!("average");
+                continue;
+            }
+
+            // println!("reached");
+
             let mut has_cover = false; // __ Маяк наличия чехла
 
             // __ Два прохода: База и Чехол
             for i in 0..=1 {
-
                 // __ Проверяем, что в спецификации есть чехол по процедуре расчета
                 // __ Потому, что может быть ситуация, когда в Таблице Models есть привязка к Чехлу
                 // __ например в Подушках, а в расчетах-то он и не нужен
+                // __ или вообще Заказ на Чехол отдельно
                 let source_data = if i == 0 {
                     if let Some(construct) = &order_line.base {
                         if let Some(items) = &construct.items {
                             for item in items.iter() {
                                 if let Some(procedure_name) = &item.pn {
-                                    if procedure_name.contains("ПодборЧехла")  {
+                                    if procedure_name.contains("ПодборЧехла") {
                                         has_cover = true;
                                         // println!("{}", procedure_name);
                                     }
@@ -256,7 +274,7 @@ async fn main() -> Result<()> {
                                         // std::mem::take забирает вектор из parser, а на его место кладет пустой Vec::new()
                                         let errors = std::mem::take(&mut parser.runtime_errors);
                                         for error in errors {
-                                            // __ Пишем Ошибки в Лог
+                                            // __ Пишем Ошибки После выполнения процедуры в Лог
                                             let inform_message = LogMessage {
                                                 level:      LogLevel::ERROR,
                                                 target:     LogTarget::Expense,
@@ -404,8 +422,33 @@ async fn main() -> Result<()> {
                                                         }
                                                     }
                                                 } else {
-                                                    err_message.push_str("Не найдена категория: ");
-                                                    err_message.push_str(&material.code_1c);
+                                                    if cfg!(debug_assertions) {
+                                                        err_message.push_str("Не найдена категория: ");
+                                                        err_message.push_str(&material.code_1c);
+                                                    }
+                                                    // __ Пишем Ошибки Не найденной категории в Лог
+                                                    let inform_message = LogMessage {
+                                                        level:      LogLevel::ERROR,
+                                                        target:     LogTarget::Expense,
+                                                        message:    "Не найдена категория".to_string(),
+                                                        context:    Some(Json(json!({
+                                                            "error": format!("Категория: {} ({})", &material.name, &material.code_1c),
+                                                            "order_id": id,
+                                                            "procedure_name": procedure.procedure.name,
+                                                            "procedure_code_1c": procedure.procedure.code_1c,
+                                                            "line_id": order_line.line_id,
+                                                            "size": format!(
+                                                                "{}x{}x{}",
+                                                                order_line.length.map(|v| v.to_string()).unwrap_or_else(|| "0".to_string()),
+                                                                order_line.width.map(|v| v.to_string()).unwrap_or_else(|| "0".to_string()),
+                                                                order_line.height.map(|v| v.to_string()).unwrap_or_else(|| "0".to_string()),
+                                                            ),
+                                                            "model": order_line.model_name,
+                                                            "amount": order_line.amount,
+                                                        }))),
+                                                        created_at: None,
+                                                    };
+                                                    inform_message.write(&pool).await.ok();
                                                 }
 
                                                 let material_code_1c: Option<String>;

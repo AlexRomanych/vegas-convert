@@ -9,7 +9,7 @@ pub struct ItemDetail {
     pub pn: Option<String>, // procedure_name
     pub h:  Option<f64>,    // detail_height (используй f64 для размеров)
     pub a:  Option<f64>,    // amount
-    pub u:  Option<String>, // единица измерения    
+    pub u:  Option<String>, // единица измерения
     pub d:  Option<String>, // деталь
     pub p:  Option<i16>,    // position
 }
@@ -22,9 +22,9 @@ pub struct Construct {
 }
 
 // __ Главная структура строки заказа
-#[derive(sqlx::FromRow, Debug, )]
+#[derive(sqlx::FromRow, Debug)]
 pub struct OrderProcessRow {
-    pub order_id:     i64,  // id Заявки к которой относится строка
+    pub order_id:     i64, // id Заявки к которой относится строка
     pub line_id:      i64,
     pub model_name:   String,
     pub width:        Option<i16>,
@@ -39,25 +39,28 @@ pub struct OrderProcessRow {
 }
 
 impl OrderProcessRow {
+    // __ Это в code_1c
+    // const CLIENT_AVERAGE_MATTRESS_PREFIX: &'static str = "CMID_"; // CLIENT MATTRESS ID, должен быть 5 символов
+    // const CLIENT_AVERAGE_ACCESSORY_PREFIX: &'static str = "CAID_"; // CLIENT ACCESSORY ID, должен быть 5 символов
+
+    // __ Это в имени модели
+    const AVERAGE_M_PREFIX: &'static str = "AVGM_"; // Универсальный префикс для средних значений, должен быть 5 символов
+    const AVERAGE_A_PREFIX: &'static str = "AVGA_"; // Универсальный префикс для средних значений, должен быть 5 символов
+
+    // __ Проверяем, является ли модель в строке Заявки расчетной или нет
+    #[rustfmt::skip]
+    pub fn is_average(&self) -> bool {
+        self.model_name.contains(Self::AVERAGE_M_PREFIX) ||
+        self.model_name.contains(Self::AVERAGE_A_PREFIX)
+    }
+
     pub fn get_length(&self) -> f64 {
-        if let Some(length) = self.length {
-            (length as f64) / 100.0
-        } else {
-            0.0    
-        }
+        if let Some(length) = self.length { (length as f64) / 100.0 } else { 0.0 }
     }
     pub fn get_width(&self) -> f64 {
-        if let Some(width) = self.width {
-            (width as f64) / 100.0
-        } else {
-            0.0
-        }
+        if let Some(width) = self.width { (width as f64) / 100.0 } else { 0.0 }
     }
     pub fn get_height(&self) -> f64 {
-        if let Some(height) = self.height {
-            (height as f64) / 100.0
-        } else {
-            0.0
-        }
+        if let Some(height) = self.height { (height as f64) / 100.0 } else { 0.0 }
     }
 }

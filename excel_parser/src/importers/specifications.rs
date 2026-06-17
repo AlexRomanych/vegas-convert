@@ -2,10 +2,10 @@
 
 use crate::constants::{
     DATA_SHEET_1C_NAME, MISSING_MATERIALS_CATEGORY_CODE_1C, MISSING_MATERIALS_CATEGORY_NAME, MISSING_MATERIALS_GROUP_CODE_1C,
-    MISSING_MATERIALS_GROUP_NAME, PRODUCTION,
+    MISSING_MATERIALS_GROUP_NAME,
 };
 use crate::helpers::{
-    cell_to_generic, cell_to_string_by_option, check_excel_file_structure, get_formatted_1c_code_string, get_formatted_unit_string, truncate_table,
+    cell_to_generic, cell_to_string_by_option, check_excel_file_structure, get_formatted_1c_code_string, get_formatted_unit_string, /*truncate_table,*/
 };
 use crate::importers::materials;
 use crate::structures::material::Material;
@@ -15,15 +15,15 @@ use crate::structures::specification::{MissingMaterial, ModelConstruct, ModelCon
 use anyhow::{Context, Result};
 use calamine::{Reader, Xlsx, open_workbook};
 use rust_decimal::Decimal;
+use sqlx::AssertSqlSafe;
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use std::collections::HashMap;
 use std::str::FromStr;
-use sqlx::AssertSqlSafe; // Не забываем импортировать обертку безопасности
 
 pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: &PgPool) -> Result<()> {
     // __ Очищает данные и сбрасывает счетчики ID (SERIAL) в начальное состояние в таблице спецификаций и их зависимостей
-    truncate_table(ModelConstruct::CONSTRUCT_TABLE_NAME, tx).await?;
-    truncate_table(ModelConstructItem::CONSTRUCT_ITEM_TABLE_NAME, tx).await?;
+    // truncate_table(ModelConstruct::CONSTRUCT_TABLE_NAME, tx).await?;
+    // truncate_table(ModelConstructItem::CONSTRUCT_ITEM_TABLE_NAME, tx).await?;
 
     // __ Открываем книгу
     let mut workbook: Xlsx<_> = open_workbook(path).with_context(|| format!("Не удалось открыть файл Спецификаций: {}", path))?;
@@ -86,6 +86,8 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: 
         }
         empty_count = 0; // Сбрасываем счетчик, если нашли данные
 
+
+        // !!! IMPORTANT Доработки тут по добавлению Спецификаций начинаются тут
         // __ Проверка на существование модели
         if let Some(row) = rows_iter.next() {
             model_code_1c = get_formatted_1c_code_string(cell_to_string_by_option(row.get(ModelConstruct::MODEL_CODE_1C_COL - 1)));
@@ -130,8 +132,11 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: 
             element_type:  None, // TODO Разбивать  на типы
         };
 
+        // __ Удаляем существующую спецификацию
+        delete_specification(&specification, tx).await?;
+
         // __ Сохраняем спецификацию
-        store_specification(specification, tx).await?;
+        store_specification(&specification, tx).await?;
 
         // __ Если вдруг там дальше нет материалов и пустота - выходим в начало цикла
         if let Some(next_row) = rows_iter.peek() {
@@ -243,9 +248,9 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: 
         update_missing_materials_code_1c(store_material, tx).await?;
     }
 
-    if !PRODUCTION {
+    if cfg!(debug_assertions) {
         println!("✅ Спецификации: импортировано {count} строк")
-    };
+    }
 
     Ok(())
 }
@@ -295,10 +300,26 @@ async fn get_entity(tx: &mut Transaction<'_, Postgres>, table_name: &str) -> Res
 }
 
 // ___ Удаляем Спецификацию
+// ___ Состав Спецификации удаляется благодаря CASCADE ON DELETE
+async fn delete_specification(specification: &ModelConstruct, tx: &mut Transaction<'_, Postgres>) -> Result<()> {
+    // __ Создаем строку запроса динамически
+    let query_str = format!(
+        r#"
+            DELETE FROM {} WHERE code_1c = $1
+        "#,
+        ModelConstruct::CONSTRUCT_TABLE_NAME
+    );
 
+    sqlx::query(AssertSqlSafe(query_str.as_str()))
+        .bind(&specification.code_1c) // $1
+        .execute(&mut **tx)
+        .await?;
+
+    Ok(())
+}
 
 // ___ Сохраняем Спецификацию
-async fn store_specification(specification: ModelConstruct, tx: &mut Transaction<'_, Postgres>) -> Result<()> {
+async fn store_specification(specification: &ModelConstruct, tx: &mut Transaction<'_, Postgres>) -> Result<()> {
     // __ Создаем строку запроса динамически
     let query_str = format!(
         r#"

@@ -5,9 +5,8 @@ mod importers; // __ Подключаем папку как модуль с им
 mod structures;
 
 
-use crate::constants::PRODUCTION;
 use anyhow::{Context, Result};
-use constants::{IMPORT_PATH, MATERIALS_FILE_NAME, MODELS_FILE_NAME, PROCEDURES_FILE_NAME, SPECIFICATIONS_FILE_NAME};
+use constants::{MATERIALS_FILE_NAME, MODELS_FILE_NAME, PROCEDURES_FILE_NAME, SPECIFICATIONS_FILE_NAME};
 use dotenvy::dotenv;
 use logger::structures::log_message::{LogLevel, LogMessage, LogTarget};
 use serde_json::json;
@@ -17,6 +16,8 @@ use std::env;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::time::Instant;
+use crate::constants::{IMPORT_PATH_LOCAL, IMPORT_PATH_PRODUCTION};
+// use crate::constants::PRODUCTION;
 // use stats_alloc::{Region, StatsAlloc, INSTRUMENTED_SYSTEM};
 // use std::alloc::System;
 // use dhat::Alloc;
@@ -49,9 +50,9 @@ async fn main() -> Result<()> {
         .context("Ошибка соединения с базой данных")?;
     // .context("Failed to connect to Postgres")?;
 
-    if !PRODUCTION {
+    if cfg!(debug_assertions) {
         println!("✅ Связь с базой установлена.")
-    };
+    }
 
     let inform_message = LogMessage {
         level:      LogLevel::INFO,
@@ -66,11 +67,14 @@ async fn main() -> Result<()> {
     // __ Создаем транзакцию (если один файл упадет, база не засорится)
     let mut tx = pool.begin().await?;
 
+    let import_path = if cfg!(debug_assertions) {IMPORT_PATH_LOCAL} else {IMPORT_PATH_PRODUCTION};
+
+
     // __ Сами отчеты
 
     // __ Процедуры
     // __ Явно указываем тип PathBuf, чтобы IDE не терялась
-    let file_path = PathBuf::from(IMPORT_PATH).join(PROCEDURES_FILE_NAME); // push — это аналог join, который меняет путь на месте
+    let file_path = PathBuf::from(import_path).join(PROCEDURES_FILE_NAME); // push — это аналог join, который меняет путь на месте
 
     // let mut file_path = PathBuf::from(IMPORT_PATH);
     // file_path.push(PROCEDURES_FILE_NAME); // push — это аналог join, который меняет путь на месте
@@ -83,9 +87,9 @@ async fn main() -> Result<()> {
     }
 
     // __ Вызов импортера Процедур. Передаем транзакцию по ссылке (&mut tx)
-    if !PRODUCTION {
+    if cfg!(debug_assertions) {
         println!("🚀 Начинаем импорт процедур из 1С/...")
-    };
+    }
 
     importers::procedures::run(&mut tx, &path_str, &pool)
         .await?;
@@ -96,7 +100,7 @@ async fn main() -> Result<()> {
 
 
     // __ Материалы
-    let file_path = PathBuf::from(IMPORT_PATH).join(MATERIALS_FILE_NAME); // push — это аналог join, который меняет путь на месте
+    let file_path = PathBuf::from(import_path).join(MATERIALS_FILE_NAME); // push — это аналог join, который меняет путь на месте
     let path_str = file_path.display().to_string();
 
     if !file_path.exists() {
@@ -104,9 +108,9 @@ async fn main() -> Result<()> {
     }
 
     // __ Вызов импортера Материалов. Передаем транзакцию по ссылке (&mut tx)
-    if !PRODUCTION {
-        println!("🚀 Начинаем импорт материалов из 1С/...")
-    };
+    if cfg!(debug_assertions) {
+        println!("🚀 Начинаем импорт материалов из 1С/...");
+    }
 
     importers::materials::run(&mut tx, &path_str, &pool)
         .await?;
@@ -116,7 +120,7 @@ async fn main() -> Result<()> {
     //     .context("Ошибка при импорте материалов")?;
 
     // __ Модели
-    let file_path = PathBuf::from(IMPORT_PATH).join(MODELS_FILE_NAME);
+    let file_path = PathBuf::from(import_path).join(MODELS_FILE_NAME);
     let path_str = file_path.display().to_string();
 
     if !file_path.exists() {
@@ -124,9 +128,9 @@ async fn main() -> Result<()> {
     }
 
     // __ Вызов импортера Моделей. Передаем транзакцию по ссылке (&mut tx)
-    if !PRODUCTION {
-        println!("🚀 Начинаем импорт моделей из 1С/...")
-    };
+    if cfg!(debug_assertions) {
+        println!("🚀 Начинаем импорт моделей из 1С/...");
+    }
 
     importers::models::run(&mut tx, &path_str, &pool)
         .await?;
@@ -136,7 +140,7 @@ async fn main() -> Result<()> {
     //     .context("Ошибка при импорте моделей")?;
 
     // __ Спецификации
-    let file_path = PathBuf::from(IMPORT_PATH).join(SPECIFICATIONS_FILE_NAME);
+    let file_path = PathBuf::from(import_path).join(SPECIFICATIONS_FILE_NAME);
     let path_str = file_path.display().to_string();
 
     if !file_path.exists() {
@@ -144,9 +148,9 @@ async fn main() -> Result<()> {
     }
 
     // __ Вызов импортера Спецификаций. Передаем транзакцию по ссылке (&mut tx)
-    if !PRODUCTION {
-        println!("🚀 Начинаем импорт Спецификаций из 1С/...")
-    };
+    if cfg!(debug_assertions) {
+        println!("🚀 Начинаем импорт Спецификаций из 1С/...");
+    }
 
     importers::specifications::run(&mut tx, &path_str, &pool)
         .await?;
@@ -159,9 +163,9 @@ async fn main() -> Result<()> {
     // __ Фиксация изменений
     tx.commit().await?;
 
-    if !PRODUCTION {
-        println!("🏁 Весь импорт завершен успешно!")
-    };
+    if cfg!(debug_assertions) {
+        println!("🏁 Весь импорт завершен успешно!");
+    }
 
     // __ Статистика по памяти
     // let stats = reg.change();
@@ -174,7 +178,7 @@ async fn main() -> Result<()> {
 
     // __ Статистика по времени
     let duration = start_time.elapsed();
-    if !PRODUCTION {
+    if cfg!(debug_assertions) {
         println!("Время выполнения: {:?}", duration);
         println!("Прошло миллисекунд: {}", duration.as_millis());
     }
@@ -190,12 +194,13 @@ async fn main() -> Result<()> {
     };
     inform_message.write(&pool).await.ok();
 
+    if cfg!(debug_assertions) {
+        println!("0")
+    }
+
     // __ Принудительно толкаем в буфер
     io::stdout().flush()?;
     // io::stdout().flush().unwrap();
 
-    if PRODUCTION {
-        println!("0")
-    };
     Ok(())
 }

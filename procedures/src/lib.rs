@@ -18,6 +18,12 @@ pub async fn get_procedures_by_list_code_1c(list_code_1c: &HashSet<String>) -> R
 
 // __ Получаем процедуры по списку id(code_1c) + подключение к БД
 pub async fn get_procedures_by_list_code_1c_pool(pool: &PgPool, list_code_1c: &HashSet<String>) -> Result<Vec<Procedure>> {
+    
+    // __ Выходим, чтобы не споймать ошибку в SQL: IN(пусто)
+    if list_code_1c.is_empty() {
+        return Ok(Vec::<Procedure>::new());
+    }
+
     let list = list_code_1c
         .iter()
         .map(|s| format!("'{}'", s))
