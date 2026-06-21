@@ -197,4 +197,31 @@ impl ParsedProcedure {
 
         Self::un_raw_outputs(self);
     }
+
+    // __ Получаем Название Объкта процедуры из Выходных значений
+    pub fn get_object_name_from_return(&self) -> Option<String> {
+        if self.returns_raw.is_empty() {
+            return None;
+        }
+
+        // 1. raw_key — это &String (ссылка на данные внутри HashMap)
+        let raw_key = self.returns_raw.keys().next().unwrap();
+
+        // 2. key — это новая String (владеет своими данными)
+        let key = raw_key.replace("Отход", "");
+
+        // 3. Находим индексы скобок
+        // Обрати внимание: так как мы убрали оператор `?` из-за unwrap выше,
+        // здесь используем привычный .find(). Если это внутри функции с `?`, можно оставить `?`
+        let start = key.find('[')? + 1;
+        let end = key.find(']')?;
+
+        // 4. Возвращаем целую строку String, а не ссылку &str
+        if start < end {
+            Some(key[start..end].to_string()) // .to_string() решает проблему E0515
+        } else {
+            None
+        }
+    }
+
 }

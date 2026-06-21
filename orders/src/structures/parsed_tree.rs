@@ -1,5 +1,7 @@
 use serde::Deserialize;
 use sqlx::types::{Decimal, Json};
+use rust_decimal::prelude::ToPrimitive;
+// use rust_decimal_macros::dec; // если используешь макросы
 
 // Самый нижний уровень: Материал/Процедура
 #[derive(Deserialize, Debug, Clone)]
@@ -47,6 +49,9 @@ impl OrderProcessRow {
     const AVERAGE_M_PREFIX: &'static str = "AVGM_"; // Универсальный префикс для средних значений, должен быть 5 символов
     const AVERAGE_A_PREFIX: &'static str = "AVGA_"; // Универсальный префикс для средних значений, должен быть 5 символов
 
+    const BASE: &'static str = "base";
+    const COVER: &'static str = "cover";
+
     // __ Проверяем, является ли модель в строке Заявки расчетной или нет
     #[rustfmt::skip]
     pub fn is_average(&self) -> bool {
@@ -60,7 +65,39 @@ impl OrderProcessRow {
     pub fn get_width(&self) -> f64 {
         if let Some(width) = self.width { (width as f64) / 100.0 } else { 0.0 }
     }
-    pub fn get_height(&self) -> f64 {
-        if let Some(height) = self.height { (height as f64) / 100.0 } else { 0.0 }
+
+    // __ Высота строки в зависимости от Чехла или МЭ
+    pub fn get_height(&self, element_type: &str) -> f64 {
+        if element_type == Self::BASE {
+            return self.base_height
+                .and_then(|h| h.to_f64())
+                .map(|h| h / 100.0)
+                .unwrap_or(0.0)
+        } else if element_type == Self::COVER {
+            return self.cover_height
+                .and_then(|h| h.to_f64())
+                .map(|h| h / 100.0)
+                .unwrap_or(0.0)
+
+        }
+        0.0
     }
+
+    // __ Возвращаем высоту МЭ
+    pub fn get_base_height(&self) -> f64 {
+            self.base_height
+                .and_then(|h| h.to_f64())
+                // .map(|h| h / 100.0)
+                .unwrap_or(0.0)
+    }
+
+    // __ Возвращаем высоту Чехла
+    pub fn get_cover_height(&self) -> f64 {
+        self.cover_height
+            .and_then(|h| h.to_f64())
+            // .map(|h| h / 100.0)
+            .unwrap_or(0.0)
+    }
+
+
 }

@@ -52,12 +52,8 @@ pub async fn parse_procedures(pool: &PgPool, procedures: &Vec<Procedure>) -> Res
             continue;
         }
 
-        let mut parsed_procedure = ParsedProcedure::default();
-        parsed_procedure.has_parse_error = false;
-        parsed_procedure.procedure = procedure.clone();
-        let code_source = procedure.text.as_ref().unwrap();
-
         // __ Подготавливаем код
+        let code_source = procedure.text.as_ref().unwrap();
         let code_erased = code_source
             .clone()
             .lines()
@@ -71,158 +67,195 @@ pub async fn parse_procedures(pool: &PgPool, procedures: &Vec<Procedure>) -> Res
             .collect::<Vec<_>>()
             .join("\n");
 
-        // __ Парсим текст процедуры на токены
-        let mut tokens: Vec<Token> = Vec::with_capacity(1500);
-        let mut pos: usize = 0;
-        // let mut has_properties = false;
-        // let mut has_parameters = false;
 
-        while pos < code_erased.len() {
-            let code_text = &code_erased[pos..];
+        // __ Пробуем исправить ситуацию, когда Объект процедуры не совпадает с объектом возвращаемого значения:
+        // __ 011_ЧехолБокРезДлинПол3Шва-Вышивка_СП, объект: ШвейныеМатериалы, а там: [ПолотнаСтеганные] = ПолезныйРасход;
+        // __ Первым проходом проверяем, что за объект возвращает процедура, если не совпадает с объектом -
+        // __ меняем объект и парсим еще раз
+        let code_erased_mem = code_erased.clone();
+        let mut object_name_mem = procedure.object_name.clone();
 
-            if let Some(token) = get_token(code_text) {
-                let mut next_token = token;
-                next_token.pos = pos;
-                pos += next_token.text.len();
+        loop {
+            let mut parsed_procedure = ParsedProcedure::default();
+            parsed_procedure.has_parse_error = false;
+            parsed_procedure.procedure = procedure.clone();
+            parsed_procedure.procedure.object_name = object_name_mem.clone();
 
-                let mut change_to_var_token = false;
+            let code_erased = code_erased_mem.clone();
 
-                // __ Действия перед тем, как положить в вектор
-                match next_token.token_type {
-                    // __ Проверяем на свойства
-                    TokenType::PROPERTY => {
-                        change_to_var_token = true;
-                        parsed_procedure
-                            .properties_raw
-                            .insert(next_token.text.clone(), 0.0);
-                        // has_properties = true;
-                        unique_properties.insert(next_token.text.clone(), next_token.clone()); // Собираем уникальные свойства
-                    },
-                    // __ Проверяем на параметры
-                    TokenType::PARAMETER => {
-                        change_to_var_token = true;
-                        // __ Убираем из параметров случайно попавшие свойства ([БлокПружинный].[Длина]), которые попадают сюда
-                        // __ из-за использования в выражениях:
-                        // __ [БлокПружинный] = (РабочаяДлина * РабочаяШирина)/([БлокПружинный].[Длина] * [БлокПружинный].[Ширина])
-                        match parsed_procedure
-                            .procedure
-                            .object_name
-                            .clone()
-                        {
-                            Some(obj_name) => {
-                                if !next_token.text.contains(&obj_name) {
+            // __ Парсим текст процедуры на токены
+            let mut tokens: Vec<Token> = Vec::with_capacity(1500);
+            let mut pos: usize = 0;
+            // let mut has_properties = false;
+            // let mut has_parameters = false;
+
+            while pos < code_erased.len() {
+                let code_text = &code_erased[pos..];
+
+                if let Some(token) = get_token(code_text) {
+                    let mut next_token = token;
+                    next_token.pos = pos;
+                    pos += next_token.text.len();
+
+                    let mut change_to_var_token = false;
+
+                    // __ Действия перед тем, как положить в вектор
+                    match next_token.token_type {
+                        // __ Проверяем на свойства
+                        TokenType::PROPERTY => {
+                            change_to_var_token = true;
+                            parsed_procedure
+                                .properties_raw
+                                .insert(next_token.text.clone(), 0.0);
+                            // has_properties = true;
+                            unique_properties.insert(next_token.text.clone(), next_token.clone()); // Собираем уникальные свойства
+                        },
+                        // __ Проверяем на параметры
+                        TokenType::PARAMETER => {
+                            change_to_var_token = true;
+                            // __ Убираем из параметров случайно попавшие свойства ([БлокПружинный].[Длина]), которые попадают сюда
+                            // __ из-за использования в выражениях:
+                            // __ [БлокПружинный] = (РабочаяДлина * РабочаяШирина)/([БлокПружинный].[Длина] * [БлокПружинный].[Ширина])
+                            match parsed_procedure
+                                .procedure
+                                .object_name
+                                .clone()
+                            {
+                                Some(obj_name) => {
+                                    if !next_token.text.contains(&obj_name) {
+                                        parsed_procedure
+                                            .parameters_raw
+                                            .insert(next_token.text.clone(), 0.0);
+                                        unique_parameters.insert(next_token.text.clone(), next_token.clone()); // Собираем уникальные аргументы
+                                    } else {
+                                        // !!! Debug
+                                        // println!("{:?}", next_token.text);
+                                        // parsed_procedure
+                                        //     .parameters_raw
+                                        //     .insert(next_token.text.clone(), 0.0);
+                                        // unique_returns.insert(next_token.text.clone(), next_token.clone());
+                                    }
+                                },
+                                None => {
                                     parsed_procedure
                                         .parameters_raw
                                         .insert(next_token.text.clone(), 0.0);
                                     unique_parameters.insert(next_token.text.clone(), next_token.clone()); // Собираем уникальные аргументы
-                                }
-                            },
-                            None => {
-                                parsed_procedure
-                                    .parameters_raw
-                                    .insert(next_token.text.clone(), 0.0);
-                                unique_parameters.insert(next_token.text.clone(), next_token.clone()); // Собираем уникальные аргументы
-                            },
-                        }
-                    },
-                    // __ Проверяем на выходные свойства
-                    TokenType::OUTPUT => {
-                        change_to_var_token = true;
+                                },
+                            }
+                        },
+                        // __ Проверяем на выходные свойства
+                        TokenType::OUTPUT => {
+                            change_to_var_token = true;
 
-                        // __ Убираем из выходных параметров случайно попавшие входные параметры ([Подушка].[Длина]), которые попадают сюда
-                        // __ из-за использования в выражениях:
-                        // __ ИначеЕсли [Подушка].[Длина]=0.7 и [Подушка].[Ширина]= 0.5 тогда
-                        match parsed_procedure
-                            .procedure
-                            .object_name
-                            .clone()
-                        {
-                            Some(obj_name) => {
-                                if next_token.text.contains(&obj_name) {
-                                    // __ Если есть в выращении Тип объекта, тогда в выходные параметры
+                            // __ Убираем из выходных параметров случайно попавшие входные параметры ([Подушка].[Длина]), которые попадают сюда
+                            // __ из-за использования в выражениях:
+                            // __ ИначеЕсли [Подушка].[Длина]=0.7 и [Подушка].[Ширина]= 0.5 тогда
+                            match parsed_procedure
+                                .procedure
+                                .object_name
+                                .clone()
+                            {
+                                Some(obj_name) => {
+                                    if next_token.text.contains(&obj_name) {
+                                        // __ Если есть в выращении Тип объекта, тогда в выходные параметры
+                                        parsed_procedure
+                                            .outputs_raw
+                                            .insert(next_token.text.clone(), 0.0);
+                                        unique_returns.insert(next_token.text.clone(), next_token.clone());
+                                        // __ Иначе засовываем во входные параметры
+                                    } else {
+                                        // !!! Debug
+                                        // println!("{:?}", next_token.text);
+                                        parsed_procedure
+                                            .parameters_raw
+                                            .insert(next_token.text.clone(), 0.0);
+                                        unique_parameters.insert(next_token.text.clone(), next_token.clone());
+                                    }
+                                },
+                                None => {
                                     parsed_procedure
                                         .outputs_raw
                                         .insert(next_token.text.clone(), 0.0);
                                     unique_returns.insert(next_token.text.clone(), next_token.clone());
-                                    // __ Иначе засовываем во входные параметры
-                                } else {
-                                    parsed_procedure
-                                        .parameters_raw
-                                        .insert(next_token.text.clone(), 0.0);
-                                    unique_parameters.insert(next_token.text.clone(), next_token.clone());
-                                }
-                            },
-                            None => {
-                                parsed_procedure
-                                    .outputs_raw
-                                    .insert(next_token.text.clone(), 0.0);
-                                unique_returns.insert(next_token.text.clone(), next_token.clone());
-                            },
-                        }
-                    },
+                                },
+                            }
+                        },
 
-                    // __ Проверяем на выходные значения
-                    TokenType::RETURN => {
-                        change_to_var_token = true;
-                        parsed_procedure
-                            .returns_raw
-                            .insert(next_token.text.clone(), 0.0);
-                        unique_returns.insert(next_token.text.clone(), next_token.clone()); // Собираем уникальные аргументы
-                    },
-                    _ => {},
-                }
+                        // __ Проверяем на выходные значения
+                        TokenType::RETURN => {
+                            change_to_var_token = true;
+                            parsed_procedure
+                                .returns_raw
+                                .insert(next_token.text.clone(), 0.0);
+                            unique_returns.insert(next_token.text.clone(), next_token.clone()); // Собираем уникальные аргументы
+                        },
+                        _ => {},
+                    }
 
-                //
-                if change_to_var_token {
-                    next_token.token_type = TokenType::VARIABLE;
-                }
+                    if change_to_var_token {
+                        next_token.token_type = TokenType::VARIABLE;
+                    }
 
-                // __ Убираем пробелы
-                if TokenType::SPACE != next_token.token_type {
-                    tokens.push(next_token);
+                    // __ Убираем пробелы
+                    if TokenType::SPACE != next_token.token_type {
+                        tokens.push(next_token);
+                    }
+                } else {
+                    parsed_procedure.has_parse_error = true;
+                    if cfg!(debug_assertions) {
+                        println!("Error at position {}\n Code:\n {}", pos, &code_text[pos..]);
+                    }
+                    break;
                 }
+            }
+
+            // __ Тут как раз делаем проверку на то, чтобы Обект Процедуры совпадал с овозвращаемым Объетом Процедуры
+            let object_name_from_returns = parsed_procedure.get_object_name_from_return();
+            if let Some(return_object_name) = object_name_from_returns {
+                if let Some(proc_object_name) = &parsed_procedure.procedure.object_name {
+                    if !return_object_name.eq(proc_object_name) {
+                        object_name_mem = Some(return_object_name.to_string());
+                        continue;
+                    }
+                }
+            }
+
+            // __ Максимальное количество токенов в процедуре
+            if tokens.len() > max_tokens {
+                max_tokens = tokens.len();
+            }
+
+            // __ Если во время парсинга токенов ошибок не было — собираем дерево выражений
+            if !parsed_procedure.has_parse_error {
+                parser.reset();
+                parser.set_tokens(tokens);
+                parser.code_1c = procedure.code_1c.clone();
+                parsed_procedure.expressions_node = parser.parse_code();
             } else {
-                parsed_procedure.has_parse_error = true;
+                // __Если была ошибка, пишем в лог, что AST пропускается
+                // __ Пишем лог
+                let inform_message = LogMessage {
+                    level:      LogLevel::ERROR,
+                    target:     LogTarget::Expense,
+                    message:    "Ошибка парсинга процедуры".to_string(),
+                    context:    Some(Json(json!({
+                        "procedure code_1c": procedure.code_1c,
+                    }))),
+                    created_at: None,
+                };
+
+                inform_message.write(&pool).await.ok();
+
                 if cfg!(debug_assertions) {
-                    println!("Error at position {}\n Code:\n {}", pos, &code_text[pos..]);
+                    println!("Procedure [{:?}] skipped due to previous tokenization error.", procedure.code_1c);
+                    return Err(anyhow::anyhow!("Ошибка парсинга процедуры".to_string()));
                 }
-                break;
             }
+
+            prepare_procedures.insert(procedure.code_1c.clone(), parsed_procedure);
+            break;
         }
-
-        // __ Максимальное количество токенов в процедуре
-        if tokens.len() > max_tokens {
-            max_tokens = tokens.len();
-        }
-
-        // __ Если во время парсинга токенов ошибок не было — собираем дерево выражений
-        if !parsed_procedure.has_parse_error {
-            parser.reset();
-            parser.set_tokens(tokens);
-            parser.code_1c = procedure.code_1c.clone();
-            parsed_procedure.expressions_node = parser.parse_code();
-        } else {
-            // Если была ошибка, пишем в лог, что AST пропускается
-            if cfg!(debug_assertions) {
-                println!("Procedure [{:?}] skipped due to previous tokenization error.", procedure.code_1c);
-            }
-            // __ Пишем лог
-            let inform_message = LogMessage {
-                level:      LogLevel::ERROR,
-                target:     LogTarget::Expense,
-                message:    "Ошибка парсинга процедуры".to_string(),
-                context:    Some(Json(json!({
-                    "procedure code_1c": procedure.code_1c,
-                }))),
-                created_at: None,
-            };
-
-            inform_message.write(&pool).await.ok();
-            return Err(anyhow::anyhow!("Ошибка парсинга процедуры".to_string()));
-        }
-
-
-        prepare_procedures.insert(procedure.code_1c.clone(), parsed_procedure);
     }
 
     // println!("Максимальное количество токенов: {}", max_tokens);
