@@ -1,11 +1,11 @@
 [workspace]
 members = [
-    "constants",
+    "constants", "cutting_tasks_creator",
     "database",
     "excel_parser", "expense_parser",
     "interpreter",
     "logger", "materials",
-    "orders", "procedures",
+    "orders", "procedures", "tasks",
 
 #    "common_logger",
 ]
@@ -15,4 +15,5 @@ resolver = "2"
 # Но стандартный способ для воркспейса:
 
 #default-members = ["excel_parser"]
-default-members = ["expense_parser"]
+#default-members = ["expense_parser"]
+default-members = ["cutting_tasks_creator"]

@@ -31,7 +31,8 @@ use std::collections::HashMap;
 
 
 // __ Парсим процедуры
-pub async fn parse_procedures(pool: &PgPool, procedures: &Vec<Procedure>) -> Result<HashMap<String, ParsedProcedure>> {
+// __ Принимаем чистый слайс стандартных процедур
+pub async fn parse_procedures(pool: &PgPool, procedures: &[Procedure]) -> Result<HashMap<String, ParsedProcedure>> {
     // __ Подготавливаем карты
     get_token_map();
     get_keywords();

@@ -15,6 +15,7 @@ pub enum LogTarget {
     ModelsUpdate,
     Compiler,
     Expense,
+    Cut,
 }
 
 impl Display for LogTarget {
@@ -24,6 +25,7 @@ impl Display for LogTarget {
             LogTarget::ModelsUpdate => write!(f, "update_models"),
             LogTarget::Compiler => write!(f, "compile_procedures"),
             LogTarget::Expense => write!(f, "parse_expense"),
+            LogTarget::Cut => write!(f, "calc_cut"),
         }
     }
 }
@@ -41,6 +43,7 @@ impl From<LogTarget> for String {
             LogTarget::ModelsUpdate => String::from("update_models"),
             LogTarget::Compiler => String::from("compile_procedures"),
             LogTarget::Expense => String::from("parse_expense"),
+            LogTarget::Cut => String::from("calc_cut"),
         }
     }
 }
