@@ -56,7 +56,7 @@ async fn main() -> Result<()> {
         order_ids = serde_json::from_str(json_data).context("Не удалось распарсить переданный из PHP JSON массив")?;
     } else {
         // __ На dev
-        let order_ids_arr = [1163, 1172];
+        let order_ids_arr = [1449];
         order_ids = HashSet::from(order_ids_arr);
     }
 
@@ -76,6 +76,19 @@ async fn main() -> Result<()> {
     inform_message.write(&pool).await.ok();
 
     let orders = get_cutting_tasks_with_details(&pool, &order_ids).await?;
+
+    // __ Пишем лог
+    let inform_message = LogMessage {
+        level:      LogLevel::INFO,
+        target:     LogTarget::Cut,
+        message:    "Количество".to_string(),
+        context:    Some(Json(json!({
+            "order amount": format!("{}", orders.len()),
+        }))),
+        created_at: None,
+    };
+    inform_message.write(&pool).await.ok();
+
 
     // !!! Debug
     // println!("orders: {:#?}", orders);
@@ -264,6 +277,7 @@ async fn main() -> Result<()> {
                                     if let Some(length) = outputs.get("[Крышка].[Длина]") {
                                         work_cutting_line.cut_length = *length as i32;
                                     }
+                                    work_cutting_line.angle = angle.clone();
                                 },
                                 CuttingTaskLine::SIDE_NAME => {
                                     if let Some(cut_width) = outputs.get("[Боковина].[Ширина]") {
@@ -272,15 +286,13 @@ async fn main() -> Result<()> {
                                     if let Some(length) = outputs.get("[Боковина].[Длина]") {
                                         work_cutting_line.cut_length = *length as i32;
                                     }
+                                    work_cutting_line.angle = None;
                                 },
                                 _ => {},
                             }
 
                             work_cutting_line.cut_detail_amount = *result as i32;
-                            work_cutting_line.angle = angle.clone();
                             work_cutting_line.save_calc_data(&mut tx).await?;
-
-
                         }
 
                         // !!! Debug
@@ -323,8 +335,8 @@ async fn main() -> Result<()> {
 
     let inform_message = LogMessage {
         level:      LogLevel::INFO,
-        target:     LogTarget::Expense,
-        message:    "Окончание расчета сырья".to_string(),
+        target:     LogTarget::Cut,
+        message:    "Окончание расчета Раскроя".to_string(),
         context:    Some(Json(json!({
             "elapsed_time, sec.": format!("{:?}", duration),
         }))),
