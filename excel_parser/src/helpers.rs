@@ -105,12 +105,20 @@ where
 
 /// **Очищает таблицу**
 pub async fn truncate_table(table_name: &str, tx: &mut Transaction<'_, Postgres>) -> anyhow::Result<()> {
-    let query = format!("TRUNCATE TABLE {} RESTART IDENTITY CASCADE", table_name);
+
+    let query = format!("DELETE FROM {}", table_name);
+    // let query = format!("TRUNCATE TABLE {} RESTART IDENTITY CASCADE", table_name);
 
     // query.as_str() превращает &String в &str
     sqlx::raw_sql(AssertSqlSafe(query.as_str()))
         .execute(&mut **tx)
         .await?; // __ Если здесь будет ошибка, она уйдет в вызывающий код
+
+    // Сбрасываем счетчик SERIAL, если это необходимо
+    let reset_sequence = format!("ALTER SEQUENCE IF EXISTS {}_id_seq RESTART WITH 1", table_name);
+    let _ = sqlx::raw_sql(AssertSqlSafe(reset_sequence.as_str()))
+        .execute(&mut **tx)
+        .await?;
 
     Ok(()) // __ Возвращаем "пустой" успех
 }
