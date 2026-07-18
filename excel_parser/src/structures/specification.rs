@@ -1,16 +1,27 @@
-use rust_decimal::Decimal;
-use sqlx::FromRow;
 use crate::structures::custom_errors::CustomError;
 use crate::structures::traits::ExcelPattern;
+use rust_decimal::Decimal;
+use sqlx::FromRow;
 
+/// **Структура для обновления данных Спецификаций**
 #[derive(Debug, FromRow, serde::Serialize, serde::Deserialize)]
 pub struct ModelConstruct {
     #[sqlx(rename = "code_1c")]
-    pub code_1c: String, // __ Код из 1С
-    pub name: String,         // __ Название спецификации
+    pub code_1c:       String, // __ Код из 1С
+    pub name:          String,         // __ Название спецификации
     pub model_code_1c: String,         // Relations: Связь с Моделью
-    pub model_name: String,         // __ Название модели (избыточно, так как есть в модели, пока оставляем для информативности)
-    pub element_type: Option<String>, // __ Тип спецификации (чехол, мэ и т.д.) /pub r#type: Option<String>, // r# используется, так как type — ключевое слово в Rust/
+    pub model_name:    String,         // __ Название модели (избыточно, так как есть в модели, пока оставляем для информативности)
+    pub element_type:  Option<String>, // __ Тип спецификации (чехол, мэ и т.д.) /pub r#type: Option<String>, // r# используется, так как type — ключевое слово в Rust/
+}
+
+/// **Структура для добавления данных Спецификаций**
+#[derive(Debug, FromRow, serde::Serialize, serde::Deserialize)]
+pub struct ModelConstructAdd {
+    pub code_1c:       String,         // __ Код из 1С
+    pub name:          String,         // __ Название спецификации
+    pub model_code_1c: String,         // Relations: Связь с Моделью
+    pub model_name:    String,         // __ Название модели (избыточно, так как есть в модели, пока оставляем для информативности)
+    pub element_type:  Option<String>, // __ Тип спецификации (чехол, мэ и т.д.) /pub r#type: Option<String>, // r# используется, так как type — ключевое слово в Rust/
 }
 
 #[derive(Debug, FromRow, serde::Serialize, serde::Deserialize)]
@@ -18,23 +29,23 @@ pub struct ModelConstructItem {
     pub id: i64, // __ Идентификатор
 
     // __ Связи (все nullable в миграции, значит везде Option)
-    pub construct_code_1c: String,         // Relations: Связь со Спецификацией
-    pub material_code_1c: Option<String>, // Relations: Связь с Материалами
+    pub construct_code_1c:     String,         // Relations: Связь со Спецификацией
+    pub material_code_1c:      Option<String>, // Relations: Связь с Материалами
     pub material_code_1c_copy: String,         // __ Копия кода 1С Материала (При обновлении Материала и каскадном nullOnDelete, след материала)
 
     // __ NOT NULL в миграции
     pub material_name: String, // __ Название материала (избыточно, так как есть в материале, пока оставляем)
 
     pub material_unit: Option<String>, // __ Единица измерения (избыточно, так как есть в материале, пока оставляем)
-    pub detail: Option<String>, // __ Деталь
+    pub detail:        Option<String>, // __ Деталь
 
-    pub procedure_code_1c: Option<String>, // Relations: Связь с Процедурой расчета
+    pub procedure_code_1c:      Option<String>, // Relations: Связь с Процедурой расчета
     pub procedure_code_1c_copy: Option<String>, // __ Копия кода 1С Процедуры расчета (При обновлении Процедуры расчета и каскадном nullOnDelete, след процедуры)
-    pub procedure_name: Option<String>, // __ Название процедуры расчета (избыточно, так как есть в Процедуре, пока оставляем)
+    pub procedure_name:         Option<String>, // __ Название процедуры расчета (избыточно, так как есть в Процедуре, пока оставляем)
 
     // __ Используем Decimal для точности (detail_height, amount)
     pub detail_height: Option<Decimal>, // __ Высота детали
-    pub count: Option<Decimal>, // __ Количество
+    pub count:         Option<Decimal>, // __ Количество
 
     // __ Но SQLx для SMALLINT в Postgres требует i16
     pub position: Option<i16>, // __ Позиция
@@ -45,7 +56,7 @@ pub struct ModelConstructItem {
 pub struct MissingMaterial {
     // pub code_1c: String,
     pub name_1c: String,
-    pub unit: Option<String>,
+    pub unit:    Option<String>,
 }
 
 
@@ -59,6 +70,7 @@ impl ModelConstruct {
     /// **Номер строки начала данных**
     pub const DATA_START_ROW: usize = 2;
 
+    /// **Позиции данных для обновления данных (основной отчет)**
     pub const MODEL_NAME_COL: usize = 1;
     pub const MODEL_CODE_1C_COL: usize = 2;
     pub const SPECIFICATION_NAME_COL: usize = 3;
@@ -66,10 +78,21 @@ impl ModelConstruct {
     pub const SPECIFICATION_ACTIVITY_COL: usize = 5;
 }
 
+impl ModelConstructAdd {
+    /// **Номер строки с заголовками**
+    pub const DATA_CHECK_ROW: usize = ModelConstruct::DATA_CHECK_ROW;
+
+    /// **Позиции данных для добавления данных (отчет по Тендерным Спецификациям)**
+    pub const SPECIFICATION_NAME_COL: usize = ModelConstruct::SPECIFICATION_NAME_COL - 2; // __ Смещение в отчете на 2 столбца
+    pub const SPECIFICATION_CODE_1C_COL: usize = ModelConstruct::SPECIFICATION_CODE_1C_COL - 2;
+    pub const SPECIFICATION_ACTIVITY_COL: usize = ModelConstruct::SPECIFICATION_ACTIVITY_COL - 2;
+}
+
 impl ModelConstructItem {
     /// **Название таблицы записей (строк) спецификаций**
     pub const CONSTRUCT_ITEM_TABLE_NAME: &'static str = "model_construct_items";
 
+    /// **Позиции данных состава спецификации для обновления данных (основной отчет)**
     pub const MATERIAL_CODE_1C_COL: usize = 6;
     pub const MATERIAL_NAME_COL: usize = 7;
     pub const MATERIAL_UNIT_COL: usize = 8;
@@ -79,6 +102,17 @@ impl ModelConstructItem {
     pub const SPECIFICATION_PROCEDURE_NAME_COL: usize = 12;
     pub const MATERIAL_COUNT_COL: usize = 13;
     pub const SPECIFICATION_LINE_POSITION_COL: usize = 15;
+
+    /// **Позиции данных состава спецификации добавления данных (отчет по Тендерным Спецификациям)**
+    pub const ADD_MATERIAL_CODE_1C_COL: usize = Self::MATERIAL_CODE_1C_COL - 2;
+    pub const ADD_MATERIAL_NAME_COL: usize = Self::MATERIAL_NAME_COL - 2;
+    pub const ADD_MATERIAL_UNIT_COL: usize = Self::MATERIAL_UNIT_COL - 2;
+    pub const ADD_SPECIFICATION_DETAIL_TYPE_COL: usize = Self::SPECIFICATION_DETAIL_TYPE_COL - 2;
+    pub const ADD_SPECIFICATION_DETAIL_HEIGHT_COL: usize = Self::SPECIFICATION_DETAIL_HEIGHT_COL - 2;
+    pub const ADD_SPECIFICATION_PROCEDURE_CODE_1C_COL: usize = Self::SPECIFICATION_PROCEDURE_CODE_1C_COL - 2;
+    pub const ADD_SPECIFICATION_PROCEDURE_NAME_COL: usize = Self::SPECIFICATION_PROCEDURE_NAME_COL - 2;
+    pub const ADD_MATERIAL_COUNT_COL: usize = Self::MATERIAL_COUNT_COL - 2;
+    pub const ADD_SPECIFICATION_LINE_POSITION_COL: usize = Self::SPECIFICATION_LINE_POSITION_COL - 2;
 }
 
 
@@ -111,6 +145,29 @@ impl ExcelPattern for ModelConstruct {
     }
 }
 
+// __ Описываем правила для Спецификаций
+impl ExcelPattern for ModelConstructAdd {
+    #[rustfmt::skip] // Запрещаем форматеру трогать этот массив
+    const CHECK_PATTERN: &'static [(usize, &'static str)] = &[
+        (ModelConstructAdd::SPECIFICATION_NAME_COL,                     "Ссылка.Наименование"),
+        (ModelConstructAdd::SPECIFICATION_CODE_1C_COL,                  "Ссылка.Код"),
+        (ModelConstructAdd::SPECIFICATION_ACTIVITY_COL,                 "Ссылка.Активная"),
+        (ModelConstructItem::ADD_MATERIAL_CODE_1C_COL,                  "Номенклатура.Код"),
+        (ModelConstructItem::ADD_MATERIAL_NAME_COL,                     "Номенклатура.Наименование"),
+        (ModelConstructItem::ADD_MATERIAL_UNIT_COL,                     "Единица измерения"),
+        (ModelConstructItem::ADD_SPECIFICATION_DETAIL_TYPE_COL,         "Деталь"),
+        (ModelConstructItem::ADD_SPECIFICATION_DETAIL_HEIGHT_COL,       "Высота детали"),
+        (ModelConstructItem::ADD_SPECIFICATION_PROCEDURE_CODE_1C_COL,   "Процедура расчета.Код"),
+        (ModelConstructItem::ADD_SPECIFICATION_PROCEDURE_NAME_COL,      "Процедура расчета.Наименование"),
+        (ModelConstructItem::ADD_MATERIAL_COUNT_COL,                    "Количество"),
+        (ModelConstructItem::ADD_SPECIFICATION_LINE_POSITION_COL,       "Номер строки"),
+    ];
 
+    fn get_check_row() -> usize {
+        Self::DATA_CHECK_ROW - 1
+    }
 
-
+    fn get_error() -> CustomError {
+        CustomError::ErrorStructureSpecificationsFile
+    }
+}

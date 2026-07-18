@@ -26,6 +26,9 @@ pub const MODELS_FILE_NAME: &'static str = "models.xlsx";
 /// **Название файла Excel со спецификациями**
 pub const SPECIFICATIONS_FILE_NAME: &'static str = "specifications.xlsx";
 
+/// **Название файла Excel с нестандартными (тендерными) спецификациями**
+pub const SPECIFICATIONS_ADD_FILE_NAME: &'static str = "specifications_add.xlsx";
+
 
 /// **Название таблицы с коллекциями**
 pub const MODEL_COLLECTIONS_TABLE_NAME: &'static str = "model_collections";
