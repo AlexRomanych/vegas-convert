@@ -242,6 +242,7 @@ pub async fn parse_procedures(pool: &PgPool, procedures: &[Procedure]) -> Result
                     message:    "Ошибка парсинга процедуры".to_string(),
                     context:    Some(Json(json!({
                         "procedure code_1c": procedure.code_1c,
+                        "procedure name": procedure.name,
                     }))),
                     created_at: None,
                 };

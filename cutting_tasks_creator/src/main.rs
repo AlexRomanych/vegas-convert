@@ -67,7 +67,7 @@ async fn main() -> Result<()> {
     let inform_message = LogMessage {
         level:      LogLevel::INFO,
         target:     LogTarget::Cut,
-        message:    "Начало расчета Раскроя".to_string(),
+        message:    "Начало расчета Кроя".to_string(),
         context:    Some(Json(json!({
             "order ids": format!("{:?}", order_ids),
         }))),
@@ -78,16 +78,16 @@ async fn main() -> Result<()> {
     let orders = get_cutting_tasks_with_details(&pool, &order_ids).await?;
 
     // __ Пишем лог
-    let inform_message = LogMessage {
-        level:      LogLevel::INFO,
-        target:     LogTarget::Cut,
-        message:    "Количество".to_string(),
-        context:    Some(Json(json!({
-            "order amount": format!("{}", orders.len()),
-        }))),
-        created_at: None,
-    };
-    inform_message.write(&pool).await.ok();
+    // let inform_message = LogMessage {
+    //     level:      LogLevel::INFO,
+    //     target:     LogTarget::Cut,
+    //     message:    "Количество".to_string(),
+    //     context:    Some(Json(json!({
+    //         "order amount": format!("{}", orders.len()),
+    //     }))),
+    //     created_at: None,
+    // };
+    // inform_message.write(&pool).await.ok();
 
 
     // !!! Debug
