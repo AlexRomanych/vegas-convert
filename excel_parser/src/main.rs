@@ -232,7 +232,7 @@ async fn main() -> Result<()> {
     let inform_message = LogMessage {
         level: LogLevel::INFO,
         target: LogTarget::ModelsUpdate,
-        message: if mode == UPDATE_MODE { "Окончание добавления".to_string() } else { "Окончание обновления".to_string() },
+        message: if mode == UPDATE_MODE { "Окончание обновления".to_string() } else { "Окончание добавления".to_string() },
         context: Some(Json(json!({
             "elapsed_time, sec.": format!("{:?}", duration),
         }))),

@@ -76,7 +76,7 @@ async fn main() -> Result<()> {
     inform_message.write(&pool).await.ok();
 
     let orders = get_cutting_tasks_with_details(&pool, &order_ids).await?;
-
+    // println!("orders: {:#?}", orders);
     // __ Пишем лог
     // let inform_message = LogMessage {
     //     level:      LogLevel::INFO,
