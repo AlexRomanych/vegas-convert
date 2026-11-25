@@ -31,10 +31,10 @@ impl ModelConstructProcedure {
     pub const PROCEDURES_TABLE_NAME: &'static str = "model_construct_procedures";
 
     /// **Номер строки с заголовками**
-    pub const DATA_CHECK_ROW: usize = 4;
+    pub const DATA_CHECK_ROW: usize = 1;
 
     /// **Номер строки начала данных**
-    pub const DATA_START_ROW: usize = 5;
+    pub const DATA_START_ROW: usize = 2;
 
     /// **Номер столбца с кодом из 1С**
     pub const CODE_COL: usize = 1;

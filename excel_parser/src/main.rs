@@ -61,7 +61,8 @@ async fn main() -> Result<()> {
         }
     } else {
         // __ На dev
-        mode = ADD_MODE;
+        mode = UPDATE_MODE;
+        // mode = ADD_MODE;
     }
 
     println!("mode: {}", mode);

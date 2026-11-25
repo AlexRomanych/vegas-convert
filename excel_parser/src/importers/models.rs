@@ -108,6 +108,18 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: 
             manufacture_types_map.insert(model_manufacture_type_code_1c.clone(), model_manufacture_type_name.clone());
         }
 
+        // __ Парсим всяко-разно
+        // let side_width = cell_to_string_by_option(row.get(Model::SIDE_WIDTH_COL - 1));
+        // let size_decrease = cell_to_string_by_option(row.get(Model::SIZE_DECREASE_COL - 1));
+        // let base_composition_format = cell_to_string_by_option(row.get(Model::BASE_COMPOSITION_FORMAT_COL - 1));
+        // let cover_height_format = cell_to_string_by_option(row.get(Model::COVER_HEIGHT_FORMAT_COL - 1));
+        // let size_format = cell_to_string_by_option(row.get(Model::SIZE_FORMAT_COL - 1));
+        // let base_block_format = cell_to_string_by_option(row.get(Model::BASE_BLOCK_FORMAT_COL - 1));
+        // let side_height_format = cell_to_string_by_option(row.get(Model::SIDE_HEIGHT_FORMAT_COL - 1));
+        // let side_width_format = cell_to_string_by_option(row.get(Model::SIDE_WIDTH_FORMAT_COL - 1));
+        // let tor_width_format = cell_to_string_by_option(row.get(Model::TOR_WIDTH_FORMAT_COL - 1));
+        // let kdch_format = cell_to_string_by_option(row.get(Model::KDCH_FORMAT_COL - 1));
+
         let cover_code_1c_str = get_formatted_1c_code_string(cell_to_string_by_option(row.get(Model::COVER_CODE_1C_COL - 1)));
         let cover_code_1c = if !cover_code_1c_str.is_empty() { Some(cover_code_1c_str) } else { None };
 
@@ -192,6 +204,17 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: 
             weight: Decimal::from_str(cell_to_string_by_option(row.get(Model::WEIGHT_COL - 1)).as_str()).unwrap_or_default(),
             barcode: cell_to_generic(row.get(Model::BARCODE_COL - 1)),
             kdch: cell_to_generic(row.get(Model::KDCH_COL - 1)),
+            side_width: cell_to_generic(row.get(Model::SIDE_WIDTH_COL - 1)),
+            size_decrease: cell_to_generic(row.get(Model::SIZE_DECREASE_COL - 1)),
+            base_composition_format: cell_to_generic(row.get(Model::BASE_COMPOSITION_FORMAT_COL - 1)),
+            cover_height_format: cell_to_generic(row.get(Model::COVER_HEIGHT_FORMAT_COL - 1)),
+            size_format: cell_to_generic(row.get(Model::SIZE_FORMAT_COL - 1)),
+            base_block_format: cell_to_generic(row.get(Model::BASE_BLOCK_FORMAT_COL - 1)),
+            side_height_format: cell_to_generic(row.get(Model::SIDE_HEIGHT_FORMAT_COL - 1)),
+            side_width_format: cell_to_generic(row.get(Model::SIDE_WIDTH_FORMAT_COL - 1)),
+            tor_width_format: cell_to_generic(row.get(Model::TOR_WIDTH_FORMAT_COL - 1)),
+            kdch_format: cell_to_generic(row.get(Model::KDCH_FORMAT_COL - 1)),
+
             // active: false,
             // description: None,
             // comment: None,
@@ -257,7 +280,7 @@ pub async fn run(tx: &mut Transaction<'_, Postgres>, path: &str, pool_executor: 
     // println!("Коллекции {:#?} models", collections_map);
     // println!("Коллекции_Бд {:#?} models", collections_map_base);
 
-    if !PRODUCTION { println!("✅ Модели: импортировано {} строк", count) };
+    if cfg!(debug_assertions) { println!("✅ Модели: импортировано {} строк", count) };
     Ok(())
 }
 
@@ -275,13 +298,18 @@ async fn store_item(model: &Model, tx: &mut Transaction<'_, Postgres>) -> Result
                 cover_mark, model_mark, owner, sewing_machine, kant, tkch, side_height,
                 barcode, base_height, cover_height, pack_density, pack_weight_rb,
                 pack_weight_ex, weight, load, guarantee, life, lamit, cover_name_1c, kdch,
+                side_width, size_decrease, base_composition_format, cover_height_format,
+                size_format, base_block_format, side_height_format, side_width_format,
+                tor_width_format, kdch_format,
                 created_at, updated_at
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
                 $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
                 $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
-                $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43,
+                $31, $32, $33, $34, $35, $36, $37, $38, $39, $40,
+                $41, $42, $43, $44, $45, $46, $47, $48, $49, $50,
+                $51, $52, $53,
                 NOW() AT TIME ZONE 'Europe/Minsk', NOW() AT TIME ZONE 'Europe/Minsk'
             )
             ON CONFLICT (code_1c) DO UPDATE SET
@@ -327,6 +355,16 @@ async fn store_item(model: &Model, tx: &mut Transaction<'_, Postgres>) -> Result
                 lamit                           = EXCLUDED.lamit,
                 cover_name_1c                   = EXCLUDED.cover_name_1c,
                 kdch                            = EXCLUDED.kdch,
+                side_width                      = EXCLUDED.side_width,
+                size_decrease                   = EXCLUDED.size_decrease,
+                base_composition_format         = EXCLUDED.base_composition_format,
+                cover_height_format             = EXCLUDED.cover_height_format,
+                size_format                     = EXCLUDED.size_format,
+                base_block_format               = EXCLUDED.base_block_format,
+                side_height_format              = EXCLUDED.side_height_format,
+                side_width_format               = EXCLUDED.side_width_format,
+                tor_width_format                = EXCLUDED.tor_width_format,
+                kdch_format                     = EXCLUDED.kdch_format,
                 updated_at                      = NOW() AT TIME ZONE 'Europe/Minsk'
         "#,
         Model::MODELS_TABLE_NAME
@@ -384,6 +422,18 @@ async fn store_item(model: &Model, tx: &mut Transaction<'_, Postgres>) -> Result
         // Добавлено позже
         .bind(&model.cover_name_1c)
         .bind(&model.kdch)
+        // Добавлено 25.11.2026
+        .bind(&model.side_width)
+        .bind(&model.size_decrease)
+        .bind(&model.base_composition_format)
+        .bind(&model.cover_height_format)
+        .bind(&model.size_format)
+        .bind(&model.base_block_format)
+        .bind(&model.side_height_format)
+        .bind(&model.side_width_format)
+        .bind(&model.tor_width_format)
+        .bind(&model.kdch_format)
+
         .execute(&mut **tx)
         .await;
 

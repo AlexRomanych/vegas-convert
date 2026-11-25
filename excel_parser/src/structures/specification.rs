@@ -164,7 +164,7 @@ impl ExcelPattern for ModelConstructAdd {
     ];
 
     fn get_check_row() -> usize {
-        Self::DATA_CHECK_ROW - 1
+        Self::DATA_CHECK_ROW
     }
 
     fn get_error() -> CustomError {

@@ -238,10 +238,10 @@ pub async fn parse_procedures(pool: &PgPool, procedures: &[Procedure]) -> Result
                 // __ Пишем лог
                 let inform_message = LogMessage {
                     level:      LogLevel::ERROR,
-                    target:     LogTarget::Expense,
+                    target:     LogTarget::Compiler,
                     message:    "Ошибка парсинга процедуры".to_string(),
                     context:    Some(Json(json!({
-                        "procedure code_1c": procedure.code_1c,
+                        "procedure code_1c(id)": procedure.code_1c,
                         "procedure name": procedure.name,
                     }))),
                     created_at: None,

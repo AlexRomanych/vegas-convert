@@ -336,7 +336,7 @@ async fn main() -> Result<()> {
     let inform_message = LogMessage {
         level:      LogLevel::INFO,
         target:     LogTarget::Cut,
-        message:    "Окончание расчета Раскроя".to_string(),
+        message:    "Окончание расчета Кроя".to_string(),
         context:    Some(Json(json!({
             "elapsed_time, sec.": format!("{:?}", duration),
         }))),

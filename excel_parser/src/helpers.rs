@@ -1,14 +1,14 @@
 #![allow(unused)]
 use crate::constants::CODE_1C_LENGTH;
-use calamine::{Data, Range};
-use sqlx::{PgPool, Postgres, Transaction};
-use std::str::FromStr;
-use serde_json::json;
-use sqlx::types::Json;
 use crate::structures::custom_errors::CustomError;
 use crate::structures::material::Material;
-use crate::structures::traits::{ExcelPattern};
-use sqlx::AssertSqlSafe; // или sqlx::AssertSqlSafe в зависимости от точной структуры экспорта в 0.9.0
+use crate::structures::traits::ExcelPattern;
+use calamine::{Data, Range};
+use serde_json::json;
+use sqlx::AssertSqlSafe;
+use sqlx::types::Json;
+use sqlx::{PgPool, Postgres, Transaction};
+use std::str::FromStr; // или sqlx::AssertSqlSafe в зависимости от точной структуры экспорта в 0.9.0
 
 const REMOVABLE_BP: &str = "БП";
 
@@ -105,7 +105,6 @@ where
 
 /// **Очищает таблицу**
 pub async fn truncate_table(table_name: &str, tx: &mut Transaction<'_, Postgres>) -> anyhow::Result<()> {
-
     let query = format!("DELETE FROM {}", table_name);
     // let query = format!("TRUNCATE TABLE {} RESTART IDENTITY CASCADE", table_name);
 
@@ -126,10 +125,7 @@ pub async fn truncate_table(table_name: &str, tx: &mut Transaction<'_, Postgres>
 
 
 // __ Проверяет на вшивость структуру Excel файла
-pub async fn check_excel_file_structure<T>(
-    range: &Range<Data>,
-    executor: &PgPool,
-) -> anyhow::Result<()>
+pub async fn check_excel_file_structure<T>(range: &Range<Data>, executor: &PgPool) -> anyhow::Result<()>
 where
     T: ExcelPattern,
 {
@@ -155,11 +151,11 @@ where
         } else {
             has_error = true;
             context = json!({
-                    "row": check_row,
-                    "col": col,
-                    "expected": expected_name,
-                    "actual": "not found",
-                });
+                "row": check_row,
+                "col": col,
+                "expected": expected_name,
+                "actual": "not found",
+            });
             break;
         }
     }
@@ -168,13 +164,12 @@ where
         let mut message = error.get_log_message();
         message.context = Some(Json(context));
         message.write(executor).await?;
+
+        if cfg!(debug_assertions) {
+            println!("{:?}", message)
+        };
+
         return Err(anyhow::anyhow!(message.message));
     }
     Ok(())
 }
-
-
-
-
-
-

@@ -1,8 +1,8 @@
 use rust_decimal::Decimal;
 // use std::collections::HashMap;
-use serde::{Deserialize, Serialize};
 use crate::structures::custom_errors::CustomError;
 use crate::structures::traits::ExcelPattern;
+use serde::{Deserialize, Serialize};
 /* use sqlx::types::{Json, chrono::{DateTime, Utc}}; */
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
@@ -27,31 +27,41 @@ pub struct Model {
     pub model_manufacture_type_name:   Option<String>, // __ Тип производства: Производство матрасов, Производство подушек, ... 'Вид производства.Наименование.42 (Производство матрасов, Производство стеганных полотен ...)'
 
     // ___ Текстовые поля
-    pub serial:              Option<String>, // __ 'Серия.7'
-    pub name:                String,         // __ 'Наименование.8' // nullable(false)
-    pub name_short:          Option<String>, // __ 'Наименование краткое.9'
-    pub name_common:         Option<String>, // __ 'Наименование общее.10'
-    pub name_report:         Option<String>, // __ 'Имя отчеты.11'
-    pub cover_name_1c:       Option<String>, // __ 'Модель чехла.Наименование.13'
-    pub textile:             Option<String>, // __ 'Ткань.16'
-    pub textile_composition: Option<String>, // __ 'Состав ткани.17'
-    pub cover_type:          Option<String>, // __ 'Тип чехла.Наименование.18'
-    pub zipper:              Option<String>, // __ 'Молния.19'
-    pub spacer:              Option<String>, // __ 'Прокладочный материал.Наименование.20'
-    pub stitch_pattern:      Option<String>, // __ 'Рисунок стежки. Наименование.21'
-    pub pack_type:           Option<String>, // __ 'Вид упаковки.Наименование.22'
-    pub base_composition:    Option<String>, // __ 'Состав мягкого элемента.23'
-    pub side_foam:           Option<String>, // __ 'ППУ бортов.24'
-    pub base_block:          Option<String>, // __ 'Базовый блок.25'
-    pub cover_mark:          Option<String>, // __ 'Маркировка чехла.29'
-    pub model_mark:          Option<String>, // __ 'Маркировка матраса.30'
-    pub owner:               Option<String>, // __ 'Владелец.32'
-    pub sewing_machine:      Option<String>, // __ 'Группы ДСЗ.34 (Тип швейных машин: АШМ, УШМ, Обшивка и Прочее)'
-    pub kant:                Option<String>, // __ 'Кант.35'
-    pub tkch:                Option<String>, // __ 'ТКЧ.36 (Типовая конструкция чехла)'
-    pub side_height:         Option<String>, // __ 'Высота бортов.38'
-    pub barcode:             Option<String>, // __ 'Штрих код.44'
-    pub kdch:                Option<String>, // __ 'Номер КДЧ.45'
+    pub serial:                  Option<String>, // __ 'Серия.7'
+    pub name:                    String,         // __ 'Наименование.8' // nullable(false)
+    pub name_short:              Option<String>, // __ 'Наименование краткое.9'
+    pub name_common:             Option<String>, // __ 'Наименование общее.10'
+    pub name_report:             Option<String>, // __ 'Имя отчеты.11'
+    pub cover_name_1c:           Option<String>, // __ 'Модель чехла.Наименование.13'
+    pub textile:                 Option<String>, // __ 'Ткань.16'
+    pub textile_composition:     Option<String>, // __ 'Состав ткани.17'
+    pub cover_type:              Option<String>, // __ 'Тип чехла.Наименование.18'
+    pub zipper:                  Option<String>, // __ 'Молния.19'
+    pub spacer:                  Option<String>, // __ 'Прокладочный материал.Наименование.20'
+    pub stitch_pattern:          Option<String>, // __ 'Рисунок стежки. Наименование.21'
+    pub pack_type:               Option<String>, // __ 'Вид упаковки.Наименование.22'
+    pub base_composition:        Option<String>, // __ 'Состав мягкого элемента.23'
+    pub side_foam:               Option<String>, // __ 'ППУ бортов.24'
+    pub base_block:              Option<String>, // __ 'Базовый блок.25'
+    pub cover_mark:              Option<String>, // __ 'Маркировка чехла.29'
+    pub model_mark:              Option<String>, // __ 'Маркировка матраса.30'
+    pub owner:                   Option<String>, // __ 'Владелец.32'
+    pub sewing_machine:          Option<String>, // __ 'Группы ДСЗ.34 (Тип швейных машин: АШМ, УШМ, Обшивка и Прочее)'
+    pub kant:                    Option<String>, // __ 'Кант.35'
+    pub tkch:                    Option<String>, // __ 'ТКЧ.36 (Типовая конструкция чехла)'
+    pub side_height:             Option<String>, // __ 'Высота бортов.38'
+    pub barcode:                 Option<String>, // __ 'Штрих код.44'
+    pub kdch:                    Option<String>, // __ 'Номер КДЧ.45'
+    pub side_width:              Option<String>, // __ 'Ширина бортов.46'
+    pub size_decrease:           Option<String>, // __ 'Уменьшение размера.47'
+    pub base_composition_format: Option<String>, // __ 'Форматка состав мягкого элемента.48'
+    pub cover_height_format:     Option<String>, // __ 'Форматка высота чехла.49'
+    pub size_format:             Option<String>, // __ 'Форматка размер.50'
+    pub base_block_format:       Option<String>, // __ 'Форматка базовый блок.51'
+    pub side_height_format:      Option<String>, // __ 'Форматка высота бортов.52'
+    pub side_width_format:       Option<String>, // __ 'Форматка ширина бортов.53'
+    pub tor_width_format:        Option<String>, // __ 'Форматка ширина торца.54'
+    pub kdch_format:             Option<String>, // __ 'Номер КДЧ (ф).55'
 
     // pub description:         Option<String>, // __ Описание
     // pub comment:             Option<String>, // __ Комментарий
@@ -92,10 +102,10 @@ impl Model {
     pub const MODELS_TABLE_NAME: &'static str = "models";
 
     /// **Номер строки с заголовками**
-    pub const DATA_CHECK_ROW: usize = 4;
+    pub const DATA_CHECK_ROW: usize = 1;
 
     /// **Номер строки начала данных**
-    pub const DATA_START_ROW: usize = 5;
+    pub const DATA_START_ROW: usize = 2;
 
     pub const CODE_1C_COL: usize = 1;
     pub const MODEL_MANUFACTURE_STATUS_COL: usize = 2;
@@ -155,14 +165,24 @@ impl Model {
     pub const WEIGHT_COL: usize = 43;
     pub const BARCODE_COL: usize = 44;
     pub const KDCH_COL: usize = 45;
+
+    pub const SIDE_WIDTH_COL: usize = 46;
+    pub const SIZE_DECREASE_COL: usize = 47;
+    pub const BASE_COMPOSITION_FORMAT_COL: usize = 48;
+    pub const COVER_HEIGHT_FORMAT_COL: usize = 49;
+    pub const SIZE_FORMAT_COL: usize = 50;
+    pub const BASE_BLOCK_FORMAT_COL: usize = 51;
+    pub const SIDE_HEIGHT_FORMAT_COL: usize = 52;
+    pub const SIDE_WIDTH_FORMAT_COL: usize = 53;
+    pub const TOR_WIDTH_FORMAT_COL: usize = 54;
+    pub const KDCH_FORMAT_COL: usize = 55;
 }
 
 // __ Описываем правила для Модели
 impl ExcelPattern for Model {
-
     #[rustfmt::skip] // Запрещаем форматеру трогать этот массив
     const CHECK_PATTERN: &'static [(usize, &'static str)] = &[
-        (Model::CODE_1C_COL, "Код"),
+        (Model::CODE_1C_COL,                        "Код"),
         (Model::MODEL_MANUFACTURE_STATUS_COL,       "Порядок, Статус"),
         (Model::MODEL_COLLECTION_CODE_1C_COL,       "Коллекция.Код"),
         (Model::MODEL_COLLECTION_NAME_COL,          "Коллекция.Наименование"),
@@ -207,6 +227,17 @@ impl ExcelPattern for Model {
         (Model::WEIGHT_COL,                         "Вес в г."),
         (Model::BARCODE_COL,                        "Штрих код"),
         (Model::KDCH_COL,                           "Номер КДЧ"),
+    
+        // (Model::SIDE_WIDTH_COL,                     "Ширина бортов"),
+        // (Model::SIZE_DECREASE_COL,                  "Уменьшение размера"),
+        // (Model::BASE_COMPOSITION_FORMAT_COL,        "Форматка состав мягкого элемента"),
+        // (Model::COVER_HEIGHT_FORMAT_COL,            "Форматка высота чехла"),
+        // (Model::SIZE_FORMAT_COL,                    "Форматка размер"),
+        // (Model::BASE_BLOCK_FORMAT_COL,              "Форматка базовый блок"),
+        // (Model::SIDE_HEIGHT_FORMAT_COL,             "Форматка высота бортов"),
+        // (Model::SIDE_WIDTH_FORMAT_COL,              "Форматка ширина бортов"),
+        // (Model::TOR_WIDTH_FORMAT_COL,               "Форматка ширина торца"),
+        // (Model::KDCH_FORMAT_COL,                    "Номер КДЧ (ф)"),
     ];
 
     fn get_check_row() -> usize {
@@ -217,9 +248,3 @@ impl ExcelPattern for Model {
         CustomError::ErrorStructureModelsFile
     }
 }
-
-
-
-
-
-
